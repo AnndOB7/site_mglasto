@@ -23,9 +23,10 @@ Este guia registra **cada etapa do projeto**: o que foi feito, por que foi feito
 11. [Guia visual: tokens do Tailwind, componentes e layout da loja](#etapa-11)
 12. [Páginas da loja: home, categoria e busca](#etapa-12)
 13. [Página de produto](#etapa-13)
-14. [Checklist para reaproveitar em outros projetos](#checklist)
-15. [Glossário](#glossario)
-16. [Diário do projeto](#diario)
+14. [Carrinho e orçamento pelo WhatsApp](#etapa-14)
+15. [Checklist para reaproveitar em outros projetos](#checklist)
+16. [Glossário](#glossario)
+17. [Diário do projeto](#diario)
 
 ---
 
@@ -1028,6 +1029,108 @@ O número vem de `WHATSAPP_NUMBER` no `.env`. A classe `WhatsApp` remove tudo qu
 
 ---
 
+<a id="etapa-14"></a>
+## Etapa 14 – Carrinho e orçamento pelo WhatsApp
+
+**Arquivos:** `app/Support/{Cart,CartLine,WhatsApp}.php`, `app/Actions/Orders/PlaceQuoteOrder.php`, `app/Http/Controllers/Store/{CartController,CheckoutController}.php`, `app/Http/Requests/Store/{AddToCartRequest,CheckoutRequest}.php`, `app/Rules/CpfOrCnpj.php`, `resources/js/pages/store/{cart,checkout,checkout-done}.tsx`, `resources/js/lib/masks.ts`, `tests/Feature/Store/{CartTest,CheckoutTest}.php`, `tests/Unit/CpfOrCnpjTest.php`
+
+**O que fizemos:** o fluxo de venda da loja atual, refeito: o cliente monta o orçamento sem login, preenche os dados, o pedido é gravado (status **Orçamento**, canal **Site**) e o WhatsApp abre com o resumo pronto.
+
+| Endereço | O que faz |
+|---|---|
+| `POST /carrinho/itens` | Adiciona produto/variação |
+| `GET /carrinho` | Lista o orçamento; `PATCH` e `DELETE` em `/carrinho/itens/{chave}` alteram ou removem |
+| `GET /orcamento` | Formulário de dados |
+| `POST /orcamento` | Cria o pedido (no máximo 10 envios por minuto) |
+| `GET /orcamento/{numero}/enviado` | Confirmação com o botão do WhatsApp |
+
+### Regra de ouro: nunca confie no preço que vem do navegador
+
+Qualquer pessoa pode abrir o DevTools e mandar `"price": 1` numa requisição. Por isso:
+
+1. A **sessão guarda só o que foi escolhido**: produto, variação e quantidade. Nada de preço.
+2. **Toda vez** que o carrinho é exibido ou o pedido é criado, os preços são **lidos de novo do banco** (`CartLine::unitPrice()` usa `currentPrice()` do produto ou da variação).
+3. O Form Request só aceita `product_id`, `variant_id` e `quantity`. Campos extras são ignorados.
+
+O teste `adding a product stores only ids and quantity...` manda `price: 1` de propósito e confere que o carrinho mostra o preço real.
+
+### A sessão como carrinho
+
+```php
+// o que fica na sessão (chave "produto-variação")
+'cart' => ['17-5' => ['product_id' => 17, 'variant_id' => 5, 'quantity' => 2]]
+```
+Sessão é um espaço no servidor ligado a um cookie do navegador. Serve bem para um orçamento sem login: some se o cliente limpar os cookies, e para uma demo tudo bem.
+
+### Form Requests: validação fora do controller
+
+`AddToCartRequest` e `CheckoutRequest` concentram as regras:
+- **`prepareForValidation()`** tira as máscaras antes de validar: `(11) 99999-0000` vira `11999990000`.
+- **`after()`** faz validações que precisam do banco: o produto está ativo? A variação é *deste* produto? Tem estoque?
+- **`messages()`** traz as mensagens em português, testadas palavra por palavra.
+- **`CpfOrCnpj`** é uma *regra de validação* própria que confere os **dígitos verificadores**. `111.111.111-11` tem 11 números, mas não é um CPF válido.
+
+### O pedido nasce numa transação
+
+`PlaceQuoteOrder` (uma Action, como o importador):
+1. Recalcula o carrinho e confere o estoque. Se acabou entre adicionar e enviar, o pedido **não** é criado e o cliente é avisado.
+2. Dentro de `DB::transaction()`: cria o `Order`, gera o número legível e cria os itens.
+3. Cada item guarda **cópia** de nome, variação, SKU e preço (regra 4). O teste apaga e renomeia o produto depois e confere que o pedido não mudou.
+4. Só depois de tudo gravado, limpa o carrinho.
+
+**Por que o número é gerado em dois passos?** `MGL-000123` usa o `id`, que só existe depois do `INSERT`. Gravamos um número provisório único (`TMP-uuid`) e trocamos logo em seguida, dentro da mesma transação.
+
+### Privacidade: quem pode ver a confirmação
+
+Números de pedido em sequência são fáceis de adivinhar: quem viu `MGL-000002` tenta `MGL-000001`. Se a confirmação abrisse para qualquer um, mostraria nome e itens de outro cliente. Por isso o `CheckoutController` guarda na **sessão** os pedidos que *aquele* visitante fez, e a confirmação de qualquer outro responde **404**.
+
+### CEP com ViaCEP e alternativa manual
+
+Ao digitar os 8 números do CEP, o **navegador** consulta `https://viacep.com.br/ws/01001000/json/` e preenche rua, bairro, cidade e UF. Se o ViaCEP estiver fora do ar ou o CEP não existir, aparece *"Não encontramos o endereço deste CEP. Preencha os campos abaixo"*, e os campos **sempre** podem ser editados à mão. A consulta tem limite de 5 segundos.
+
+### A mensagem do WhatsApp
+
+```
+Olá! Gostaria de um orçamento. Pedido *MGL-000002*
+
+• 2x PISO BORRACHA DIAMANTE (Vermelho / 3 mm) – R$ 177,20
+
+Total dos produtos: *R$ 177,20* (frete a combinar)
+
+Nome: Cliente Demo
+Entrega: São Paulo/SP, CEP 01001-000
+```
+Vai **o número do pedido**, para a equipe achar tudo no `/admin`, mas não vai telefone nem CPF, que já estão no painel.
+
+### Como testamos o fluxo de verdade (sem sujar o banco)
+
+Além dos testes automatizados, rodamos o fluxo num **navegador real**:
+1. Copiamos o `database.sqlite` para uma pasta temporária e subimos um segundo servidor apontando para a cópia (`DB_DATABASE=... php artisan serve --port=8125`).
+2. Um script em Node controlou o Chrome pelo **DevTools Protocol**: abriu o Piso Diamante, escolheu "Vermelho", adicionou, aumentou a quantidade no carrinho, preencheu o formulário (o ViaCEP respondeu de verdade), enviou e conferiu a confirmação, em 375 e 1280 px.
+3. Conferimos que o pedido foi parar **na cópia** e que o banco real continuou com 0 pedidos.
+
+### Decisões tomadas (para o André revisar)
+
+- **Endereço obrigatório** (CEP, rua, número, bairro, cidade, UF): sem ele não dá para calcular o frete do orçamento.
+- **O WhatsApp abre por um botão**, não automaticamente: navegadores bloqueiam janelas abertas sem clique, e o cliente vê o resumo antes.
+- **O estoque não é baixado** ao gerar o orçamento: orçamento não é venda. Baixar o estoque fica para quando o pedido for confirmado.
+- **Frete fora do total**: o total mostra só os produtos, com "frete a combinar".
+
+### Problemas encontrados
+
+| Problema | Causa | Solução |
+|---|---|---|
+| O PHPStan reclamou do array do `validated()` | `validated()` devolve `array<string, mixed>`, sem garantias de tipo | Método `customer()` no Form Request devolve o array já com os tipos certos |
+| A mensagem mostrava `CEP 01001000` | O CEP é gravado só com números | Formatar só na exibição (`01001-000`) |
+
+### Para fixar
+- Adicione um produto ao orçamento, abra o DevTools (F12 → Application → Cookies) e encontre o cookie da sessão. Onde está o preço?
+- Por que o teste de preço adulterado manda `price: 1` e `unit_price: 1`?
+- Gere um pedido, copie o endereço da confirmação e abra numa janela anônima. O que aparece? Por quê?
+- Valide à mão o CPF `529.982.247-25` seguindo o código de `CpfOrCnpj::isValidCpf()`.
+
+---
+
 <a id="checklist"></a>
 ## Checklist para reaproveitar em outros projetos
 
@@ -1068,6 +1171,9 @@ O número vem de `WHATSAPP_NUMBER` no `.env`. A classe `WhatsApp` remove tudo qu
 - [ ] Listas com eager loading (`with`) e um teste que conta consultas
 - [ ] HTML vindo de fora sanitizado **ao exibir**, com parser de HTML e testes de ataques conhecidos
 - [ ] Metatags de compartilhamento no HTML do servidor
+- [ ] Preço sempre calculado no servidor; o navegador só manda ids e quantidades
+- [ ] Páginas com dados pessoais protegidas contra adivinhação de endereço (ids sequenciais)
+- [ ] Formulários públicos com limite de envios (`throttle`)
 
 **Qualidade**
 - [ ] Testes para cada regra de negócio
@@ -1076,6 +1182,7 @@ O número vem de `WHATSAPP_NUMBER` no `.env`. A classe `WhatsApp` remove tudo qu
 - [ ] Páginas conferidas com 375 px reais de largura (nada passa da tela)
 - [ ] Testes que não dependem do build do front-end (`withoutVite()`)
 - [ ] Teste de busca que falharia se o defeito existisse (não só um que passa)
+- [ ] Fluxo principal testado num navegador real, numa cópia do banco
 
 ---
 
@@ -1090,6 +1197,7 @@ O número vem de `WHATSAPP_NUMBER` no `.env`. A classe `WhatsApp` remove tudo qu
 | **COALESCE** | Função SQL que devolve o primeiro valor não nulo de uma lista |
 | **Composer** | Instala pacotes PHP (lista em `composer.json`) |
 | **Contraste (WCAG)** | Diferença de luminosidade entre texto e fundo; mínimo de 4,5:1 para texto normal |
+| **DevTools Protocol** | Interface para controlar o Chrome por código (cliques, digitação, screenshots) |
 | **Eager loading** | Carregar relacionamentos junto com a consulta principal (`with()`), evitando o N+1 |
 | **Eloquent** | O sistema de models do Laravel |
 | **Enum** | Tipo com um conjunto fixo de valores |
@@ -1097,6 +1205,7 @@ O número vem de `WHATSAPP_NUMBER` no `.env`. A classe `WhatsApp` remove tudo qu
 | **Favicon** | Ícone do site na aba do navegador |
 | **Filament** | Pacote que gera telas de administração (listas, formulários) a partir dos models |
 | **Flat (design plano)** | Estilo sem relevo, sombras ou brilho |
+| **Form Request** | Classe do Laravel que concentra a validação de um formulário |
 | **Headless** | Navegador rodando sem janela, usado para testes e screenshots |
 | **Idempotente** | Pode rodar várias vezes com o mesmo resultado, sem duplicar |
 | **Inertia** | Liga o Laravel ao React sem precisar de uma API separada |
@@ -1111,14 +1220,17 @@ O número vem de `WHATSAPP_NUMBER` no `.env`. A classe `WhatsApp` remove tudo qu
 | **Sanitizar** | Limpar um conteúdo deixando só o que é seguro |
 | **Scope** | Filtro reutilizável de consulta (`Product::active()`) |
 | **Seeder** | Script que preenche o banco com dados iniciais |
+| **Sessão** | Espaço no servidor ligado a um cookie do navegador; guarda dados entre páginas sem login |
 | **Shared props (Inertia)** | Dados que o servidor manda para todas as páginas (menu, carrinho) |
 | **SKU** | Código interno do produto |
 | **Slug** | Versão do nome usada em URLs (`piso-borracha-diamante`) |
 | **Soft delete** | "Apagar" marcando a data, sem remover de verdade |
 | **SVG** | Formato de imagem vetorial: nítido em qualquer tamanho, descrito em código |
+| **Throttle** | Limite de requisições por minuto, contra abuso |
 | **Token de design** | Variável com uma decisão visual (cor, raio, sombra) usada em todo o site |
 | **Transação** | Grupo de operações no banco que acontece por inteiro ou não acontece |
 | **useState** | Função do React que guarda um valor da tela e redesenha quando ele muda |
+| **ViaCEP** | Serviço gratuito que devolve o endereço de um CEP |
 | **Vite** | Ferramenta que compila o React e o Tailwind |
 | **XSS** | Ataque que injeta código JavaScript numa página para rodar no navegador de outras pessoas |
 
@@ -1176,13 +1288,20 @@ Registro de **tudo** o que muda no projeto, na ordem em que aconteceu. Cada linh
 | 18/11/2026 | `withoutVite()` no `TestCase` | Os testes dependiam de `npm run build` ter sido rodado | `dd23063` | [12](#etapa-12) |
 | 18/11/2026 | Busca remove `%`, `_` e `\` do termo | No SQLite o `LIKE` não tem escape padrão; esses caracteres funcionariam como curinga | `dd23063` | [12](#etapa-12) |
 | 18/11/2026 | Tipos do PHPDoc corrigidos e dados da empresa validados ao ler do `config()` | PHPStan nível 7 sem erros no código novo | `dd23063` | [12](#etapa-12) |
-| 18/11/2026 | Página `/produto/{slug}`: galeria, preço com promoção riscada, disponibilidade, seletor de variações, quantidade, descrição e relacionados | Tarefa 8 da demo | *(próximo commit)* | [13](#etapa-13) |
-| 18/11/2026 | `ProductVariant::isInStock()` (estoque próprio ou compartilhado com o produto) | Regra 3 do contexto num lugar só, para a página e o carrinho | *(próximo commit)* | [13](#etapa-13) |
-| 18/11/2026 | `HtmlSanitizer` com `DOMDocument`: descrição sanitizada ao exibir | Regra 8 do contexto; proteção contra XSS | *(próximo commit)* | [13](#etapa-13) |
-| 18/11/2026 | Metatags Open Graph e `canonical` no HTML do servidor (`withViewData('meta')`) | Pré-visualização do link no WhatsApp e no Google, que não executam JavaScript | *(próximo commit)* | [13](#etapa-13) |
-| 18/11/2026 | `WHATSAPP_NUMBER` (vazio no `.env.example`) e classe `WhatsApp`; sem número, a página mostra `[A DEFINIR]` | Não inventar número de contato | *(próximo commit)* | [13](#etapa-13) |
-| 18/11/2026 | Correção: página de produto passava 8 px da tela no celular (`grid-cols-1`) | Coluna implícita da grade crescia com as miniaturas | *(próximo commit)* | [13](#etapa-13) |
-| 18/11/2026 | Trilha de navegação prefere categoria real a "Oferta"; opção de valor único já vem marcada | Usabilidade | *(próximo commit)* | [13](#etapa-13) |
+| 18/11/2026 | Página `/produto/{slug}`: galeria, preço com promoção riscada, disponibilidade, seletor de variações, quantidade, descrição e relacionados | Tarefa 8 da demo | `8ef8cfa` | [13](#etapa-13) |
+| 18/11/2026 | `ProductVariant::isInStock()` (estoque próprio ou compartilhado com o produto) | Regra 3 do contexto num lugar só, para a página e o carrinho | `8ef8cfa` | [13](#etapa-13) |
+| 18/11/2026 | `HtmlSanitizer` com `DOMDocument`: descrição sanitizada ao exibir | Regra 8 do contexto; proteção contra XSS | `8ef8cfa` | [13](#etapa-13) |
+| 18/11/2026 | Metatags Open Graph e `canonical` no HTML do servidor (`withViewData('meta')`) | Pré-visualização do link no WhatsApp e no Google, que não executam JavaScript | `8ef8cfa` | [13](#etapa-13) |
+| 18/11/2026 | `WHATSAPP_NUMBER` (vazio no `.env.example`) e classe `WhatsApp`; sem número, a página mostra `[A DEFINIR]` | Não inventar número de contato | `8ef8cfa` | [13](#etapa-13) |
+| 18/11/2026 | Correção: página de produto passava 8 px da tela no celular (`grid-cols-1`) | Coluna implícita da grade crescia com as miniaturas | `8ef8cfa` | [13](#etapa-13) |
+| 18/11/2026 | Trilha de navegação prefere categoria real a "Oferta"; opção de valor único já vem marcada | Usabilidade | `8ef8cfa` | [13](#etapa-13) |
+| 18/11/2026 | Carrinho na sessão (`Cart`, `CartLine`): guarda só produto, variação e quantidade; preços sempre relidos do banco | Nunca confiar no preço enviado pelo navegador | *(próximo commit)* | [14](#etapa-14) |
+| 18/11/2026 | `AddToCartRequest` e `CheckoutRequest` (máscaras removidas, mensagens em português) e regra `CpfOrCnpj` com dígitos verificadores | Validação fora do controller | *(próximo commit)* | [14](#etapa-14) |
+| 18/11/2026 | `PlaceQuoteOrder`: pedido `quote`/`site`, número `MGL-000123`, itens com cópia, tudo numa transação; carrinho limpo depois | Regras 4 e 6 do contexto | *(próximo commit)* | [14](#etapa-14) |
+| 18/11/2026 | Confirmação só abre na sessão que fez o pedido; envio limitado a 10 por minuto | Números sequenciais permitiriam ver dados de outros clientes; evitar spam de pedidos | *(próximo commit)* | [14](#etapa-14) |
+| 18/11/2026 | Busca de CEP no ViaCEP pelo navegador, com preenchimento manual se falhar | Facilitar o preenchimento sem depender do serviço | *(próximo commit)* | [14](#etapa-14) |
+| 18/11/2026 | Mensagem do WhatsApp com número do pedido, itens e total; sem número configurado, aviso `[A DEFINIR]` | Fluxo de venda atual da MGLASTO | *(próximo commit)* | [14](#etapa-14) |
+| 18/11/2026 | Fluxo completo validado em navegador real (Chrome via DevTools Protocol) numa cópia do banco, em 375 e 1280 px | Critério de "pronto" da demo, sem sujar o banco local | – | [14](#etapa-14) |
 
 ---
 

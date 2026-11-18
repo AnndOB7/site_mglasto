@@ -46,6 +46,7 @@ Repositório: https://github.com/AnndOB7/site_mglasto · pasta local: `C:\dev\si
 - **Visual da loja:** tokens no `@theme` de `resources/css/app.css` (`brand`, `brand-ink` para texto laranja, `graphite`, `surface`...), componentes em `resources/js/components/store/`, layout `resources/js/layouts/store-layout.tsx` (páginas em `pages/store/` usam ele). Dados do cabeçalho/rodapé no shared prop `store` (`App\Support\StoreLayoutData`). Guia visual em `/guia-visual` (fora de produção).
 - **Dados da empresa:** `config('mglasto.company')`, lidos de `COMPANY_*` no `.env`. Vazios aparecem como `[A DEFINIR]`.
 - **Páginas da loja:** `/` (home), `/categoria/{slug}`, `/busca?q=` (sem `q` lista tudo), `/produto/{slug}`. Controllers em `app/Http/Controllers/Store/`; regras de listagem em `App\Support\ProductListing`; formato do card em `App\Http\Resources\ProductCardResource`. Ordenação `?ordem=nome|menor-preco|maior-preco` usa o preço pago (`COALESCE(sale_price, price)`).
+- **Orçamento (carrinho + checkout):** carrinho na sessão (`App\Support\Cart`, guarda só ids e quantidade; preços relidos do banco), rotas `/carrinho`, `/orcamento`, `/orcamento/{numero}/enviado` (só abre na sessão que fez o pedido). Pedido criado por `App\Actions\Orders\PlaceQuoteOrder` (status `quote`, canal `site`, número `MGL-000123`). WhatsApp em `App\Support\WhatsApp` (`WHATSAPP_NUMBER`; vazio = `[A DEFINIR]`).
 - **Testes:** `tests/Feature/Catalog/`, `tests/Feature/Admin/`, `tests/Feature/Store/`, `tests/Unit/MoneyTest.php`.
 
 ### Particularidades da loja atual (descobertas na importação)
@@ -66,7 +67,7 @@ Repositório: https://github.com/AnndOB7/site_mglasto · pasta local: `C:\dev\si
 | 6 | Guia visual + layout base | 25/11 | ✅ |
 | 7 | Home e categoria com busca | 26–27/11 | ✅ |
 | 8 | Página de produto | 28–29/11 | ✅ |
-| 9 | Carrinho + orçamento via WhatsApp | 30/11–01/12 | ⏳ |
+| 9 | Carrinho + orçamento via WhatsApp | 30/11–01/12 | ✅ |
 | 10 | Páginas institucionais | 01/12 | ⏳ (corta primeiro se atrasar) |
 | 11 | Testes, ajustes e demo publicada | 02/12 | ⏳ |
 

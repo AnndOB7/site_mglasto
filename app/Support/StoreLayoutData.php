@@ -41,7 +41,7 @@ final class StoreLayoutData
             'cart_count' => self::cartCount($request),
             'search_url' => route('search', absolute: false),
             'search_query' => (string) $request->query('q', ''),
-            'cart_url' => '/carrinho',
+            'cart_url' => route('cart.show', absolute: false),
             'home_url' => route('home', absolute: false),
             'institutional' => [
                 ['label' => 'Atendimento', 'url' => '/atendimento'],
@@ -70,9 +70,6 @@ final class StoreLayoutData
 
     private static function cartCount(Request $request): int
     {
-        /** @var array<string, array{quantity: int}> $items */
-        $items = $request->hasSession() ? $request->session()->get('cart', []) : [];
-
-        return array_sum(array_column($items, 'quantity'));
+        return $request->hasSession() ? (new Cart($request->session()))->count() : 0;
     }
 }

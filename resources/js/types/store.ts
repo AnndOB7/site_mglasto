@@ -17,6 +17,25 @@ export type ProductSummary = {
     image: ProductImage | null;
 };
 
+/** A cart line. Prices are recalculated by the server on every request. */
+export type CartLine = {
+    key: string;
+    product_id: number;
+    name: string;
+    variant: string | null;
+    sku: string | null;
+    url: string;
+    image: ProductImage | null;
+    unit_price: Cents;
+    quantity: number;
+    total: Cents;
+    max_quantity: number;
+    in_stock: boolean;
+    enough_stock: boolean;
+    /** PATCH to change the quantity, DELETE to remove. */
+    item_url: string;
+};
+
 /** Laravel paginator, as sent by ->paginate(). */
 export type Paginated<T> = {
     data: T[];

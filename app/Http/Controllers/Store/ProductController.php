@@ -66,7 +66,7 @@ class ProductController extends Controller
             ] : null,
             'related' => ProductCardResource::collection($this->related($product))->resolve(),
             'whatsappUrl' => WhatsApp::link("Olá! Tenho uma dúvida sobre o produto {$product->name}: {$url}"),
-            'addToCartUrl' => null,
+            'addToCartUrl' => route('cart.items.store', absolute: false),
         ])->withViewData('meta', [
             'title' => $product->name,
             'description' => $summary,

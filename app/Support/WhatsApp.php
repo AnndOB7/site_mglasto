@@ -2,6 +2,9 @@
 
 namespace App\Support;
 
+use App\Models\Order;
+use App\Models\OrderItem;
+
 /**
  * Builds "click to chat" links (https://wa.me/...) with a ready message.
  */
@@ -30,5 +33,39 @@ final class WhatsApp
         }
 
         return "https://wa.me/{$number}?text=".rawurlencode($message);
+    }
+
+    /**
+     * Summary of a quote order, ready to send to the store. Carries the order
+     * number so the team finds it in the /admin panel.
+     */
+    public static function quoteMessage(Order $order): string
+    {
+        $items = $order->items->map(function (OrderItem $item): string {
+            $name = $item->variant_name ? "{$item->product_name} ({$item->variant_name})" : $item->product_name;
+
+            return "• {$item->quantity}x {$name} – ".Money::format($item->total);
+        })->implode("\n");
+
+        $city = trim("{$order->shipping_city}/{$order->shipping_state}", '/');
+
+        return implode("\n", array_filter([
+            "Olá! Gostaria de um orçamento. Pedido *{$order->number}*",
+            '',
+            $items,
+            '',
+            'Total dos produtos: *'.Money::format($order->total).'* (frete a combinar)',
+            '',
+            "Nome: {$order->customer_name}",
+            $city !== '' ? "Entrega: {$city}, CEP ".self::formatZip((string) $order->shipping_zip) : null,
+        ], fn (?string $line): bool => $line !== null));
+    }
+
+    /**
+     * "01001000" → "01001-000".
+     */
+    private static function formatZip(string $zip): string
+    {
+        return strlen($zip) === 8 ? substr($zip, 0, 5).'-'.substr($zip, 5) : $zip;
     }
 }
