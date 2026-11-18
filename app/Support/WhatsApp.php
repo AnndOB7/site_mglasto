@@ -57,15 +57,7 @@ final class WhatsApp
             'Total dos produtos: *'.Money::format($order->total).'* (frete a combinar)',
             '',
             "Nome: {$order->customer_name}",
-            $city !== '' ? "Entrega: {$city}, CEP ".self::formatZip((string) $order->shipping_zip) : null,
+            $city !== '' ? "Entrega: {$city}, CEP ".BrazilianFormat::zip($order->shipping_zip) : null,
         ], fn (?string $line): bool => $line !== null));
-    }
-
-    /**
-     * "01001000" → "01001-000".
-     */
-    private static function formatZip(string $zip): string
-    {
-        return strlen($zip) === 8 ? substr($zip, 0, 5).'-'.substr($zip, 5) : $zip;
     }
 }

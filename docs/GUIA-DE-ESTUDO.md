@@ -25,9 +25,10 @@ Este guia registra **cada etapa do projeto**: o que foi feito, por que foi feito
 13. [Página de produto](#etapa-13)
 14. [Carrinho e orçamento pelo WhatsApp](#etapa-14)
 15. [Páginas institucionais](#etapa-15)
-16. [Checklist para reaproveitar em outros projetos](#checklist)
-17. [Glossário](#glossario)
-18. [Diário do projeto](#diario)
+16. [Revisão final antes de apresentar](#etapa-16)
+17. [Checklist para reaproveitar em outros projetos](#checklist)
+18. [Glossário](#glossario)
+19. [Diário do projeto](#diario)
 
 ---
 
@@ -1168,6 +1169,57 @@ O site antigo tinha vários links apontando para `#` (não levam a lugar nenhum)
 
 ---
 
+<a id="etapa-16"></a>
+## Etapa 16 – Revisão final antes de apresentar
+
+**Arquivos:** `docs/RELATORIO-EXECUCAO.md`, `app/Support/BrazilianFormat.php`, `app/Filament/Resources/**` (fotos e formatação), `app/Actions/Catalog/ImportWooCommerceCatalog.php` e `database/factories/CategoryFactory.php` (tipos)
+
+**O que fizemos:** passamos a demo inteira pelas ferramentas de qualidade e por um teste de ponta a ponta, e escrevemos o relatório para o André revisar.
+
+### As ferramentas, uma por uma
+
+| Comando | O que confere | Resultado |
+|---|---|---|
+| `php artisan test` | As regras de negócio (testes automatizados) | 231 passando |
+| `vendor/bin/pint --test` | Estilo do código PHP (espaços, ordem dos `use`...) | Sem pendências |
+| `vendor/bin/phpstan analyse` | **Análise estática**: acha erros de tipo sem rodar o código | Nível 7, 0 erros |
+| `npm run types:check` | Tipos do TypeScript | Sem erros |
+| `npm run check` | Formatação e lint do front-end | Sem erros |
+| `npm run build` | Se o front-end compila para produção | OK |
+
+### O que o PHPStan encontrou no código antigo
+
+Os 9 erros que sobravam estavam no importador e numa factory, de antes da execução autônoma. Dois eram **bugs esperando acontecer**:
+- `pathinfo(parse_url($url, PHP_URL_PATH))`: com uma URL estranha, o `parse_url` devolve `null`, e passar `null` para `pathinfo` é obsoleto no PHP 8. Corrigido com `parse_url(...) ?: ''`.
+- `collect($data['attributes'])` recebia um valor sem tipo vindo da API. Com `Arr::wrap(...)`, um valor ausente vira lista vazia (o mesmo comportamento de antes), e o tipo fica claro.
+
+**Regra que seguimos:** corrigir a causa, **nunca** silenciar o PHPStan com `@phpstan-ignore` ou com casts só para ele parar de reclamar. Depois de mexer no importador, rodamos de novo a importação contra a loja real (numa cópia do banco) para provar que nada mudou: 8 categorias, 25 produtos, 5 variações.
+
+### O que a revisão visual encontrou
+
+| Problema | Causa | Solução |
+|---|---|---|
+| Fotos quebradas na lista de produtos do painel | O Filament monta a URL com o `APP_URL` do `.env` (`localhost:8000`); aberto por outra porta, a foto some | A coluna monta a URL a partir do endereço acessado (`url($image->url())`) |
+| Telefone `11999990000` e CEP `01001000` difíceis de ler no painel | Gravamos só os números (o certo), mas exibíamos assim | `BrazilianFormat`: `(11) 99999-0000`, `529.982.247-25`, `01001-000`, só na exibição |
+
+**Por que gravar só números e formatar na hora de mostrar?** Porque assim buscar, comparar e validar fica fácil, e o formato pode mudar sem mexer nos dados.
+
+### Testar sem sujar o banco
+
+Para testar o fluxo inteiro (inclusive criar um administrador e pedidos), usamos uma **cópia** do banco:
+```bash
+cp database/database.sqlite /pasta/temporaria/e2e.sqlite
+DB_DATABASE=/pasta/temporaria/e2e.sqlite php artisan serve --port=8125
+```
+Uma variável de ambiente definida no terminal **tem prioridade sobre o `.env`**. No fim, conferimos que o banco real continuava com 0 pedidos e 0 usuários.
+
+### Para fixar
+- Rode `vendor/bin/phpstan analyse` e depois troque, em algum arquivo, um `?: ''` por nada. O que o PHPStan diz?
+- Leia o `docs/RELATORIO-EXECUCAO.md` e marque as decisões com que você concorda e as que quer mudar.
+- Siga o roteiro da apresentação do relatório no seu celular, com `composer run dev` e o IP do computador na rede.
+
+---
+
 <a id="checklist"></a>
 ## Checklist para reaproveitar em outros projetos
 
@@ -1222,6 +1274,8 @@ O site antigo tinha vários links apontando para `#` (não levam a lugar nenhum)
 - [ ] Fluxo principal testado num navegador real, numa cópia do banco
 - [ ] Teste que visita todos os links do menu e do rodapé (nenhum `#`, nenhum 404)
 - [ ] Nenhuma política ou dado da empresa inventado: o que falta aparece como `[A DEFINIR]`
+- [ ] PHPStan sem erros, sem `@phpstan-ignore`
+- [ ] Testes manuais feitos numa cópia do banco, nunca no banco real
 
 ---
 
@@ -1231,6 +1285,7 @@ O site antigo tinha vários links apontando para `#` (não levam a lugar nenhum)
 | Termo | Significado |
 |---|---|
 | **403** | Código HTTP de "proibido": a pessoa está logada, mas não tem permissão |
+| **Análise estática** | Ferramenta (PHPStan) que encontra erros lendo o código, sem executá-lo |
 | **API Resource** | Classe do Laravel que define exatamente quais campos de um model vão para o navegador |
 | **Artisan** | Ferramenta de linha de comando do Laravel (`php artisan ...`) |
 | **COALESCE** | Função SQL que devolve o primeiro valor não nulo de uma lista |
@@ -1265,6 +1320,7 @@ O site antigo tinha vários links apontando para `#` (não levam a lugar nenhum)
 | **Slug** | Versão do nome usada em URLs (`piso-borracha-diamante`) |
 | **Soft delete** | "Apagar" marcando a data, sem remover de verdade |
 | **SVG** | Formato de imagem vetorial: nítido em qualquer tamanho, descrito em código |
+| **Teste de ponta a ponta (E2E)** | Teste que percorre o fluxo inteiro como um usuário faria, num navegador |
 | **Throttle** | Limite de requisições por minuto, contra abuso |
 | **Token de design** | Variável com uma decisão visual (cor, raio, sombra) usada em todo o site |
 | **Transação** | Grupo de operações no banco que acontece por inteiro ou não acontece |
@@ -1341,9 +1397,12 @@ Registro de **tudo** o que muda no projeto, na ordem em que aconteceu. Cada linh
 | 18/11/2026 | Busca de CEP no ViaCEP pelo navegador, com preenchimento manual se falhar | Facilitar o preenchimento sem depender do serviço | `37e0dc6` | [14](#etapa-14) |
 | 18/11/2026 | Mensagem do WhatsApp com número do pedido, itens e total; sem número configurado, aviso `[A DEFINIR]` | Fluxo de venda atual da MGLASTO | `37e0dc6` | [14](#etapa-14) |
 | 18/11/2026 | Fluxo completo validado em navegador real (Chrome via DevTools Protocol) numa cópia do banco, em 375 e 1280 px | Critério de "pronto" da demo, sem sujar o banco local | – | [14](#etapa-14) |
-| 18/11/2026 | Páginas Atendimento, Perguntas frequentes e Trocas e devoluções; políticas da empresa marcadas `[A DEFINIR]` e destacadas | Tarefa 10; não inventar políticas | *(próximo commit)* | [15](#etapa-15) |
-| 18/11/2026 | Links institucionais do menu e do rodapé gerados pelas rotas; teste que visita todos os links do layout | Nenhum link do site pode apontar para `#` (defeito do site antigo) | *(próximo commit)* | [15](#etapa-15) |
+| 18/11/2026 | Páginas Atendimento, Perguntas frequentes e Trocas e devoluções; políticas da empresa marcadas `[A DEFINIR]` e destacadas | Tarefa 10; não inventar políticas | `a54b603` | [15](#etapa-15) |
+| 18/11/2026 | Links institucionais do menu e do rodapé gerados pelas rotas; teste que visita todos os links do layout | Nenhum link do site pode apontar para `#` (defeito do site antigo) | `a54b603` | [15](#etapa-15) |
+| 18/11/2026 | PHPStan zerado no projeto inteiro: tipos no importador (`Arr::wrap`, `parse_url ?: ''`) e no `CategoryFactory` | Dois eram bugs esperando acontecer; regras do importador intactas (reimportação conferida: 8/25/5) | *(próximo commit)* | [16](#etapa-16) |
+| 18/11/2026 | Fotos do painel com URL do endereço acessado; `BrazilianFormat` para telefone, CPF/CNPJ e CEP no painel e na mensagem do WhatsApp | Fotos quebravam fora de `localhost:8000`; números crus difíceis de ler | *(próximo commit)* | [16](#etapa-16) |
+| 18/11/2026 | `docs/RELATORIO-EXECUCAO.md` | Relatório das tarefas 5 a 11 para o André revisar antes de juntar no `main` | *(próximo commit)* | [16](#etapa-16) |
 
 ---
 
-*Próximas seções a serem adicionadas conforme o projeto avança: painel administrativo (Filament), layout e Tailwind, páginas da loja em React, carrinho e orçamento via WhatsApp, publicação da demo.*
+*Próximas seções a serem adicionadas conforme o projeto avança: ajustes a partir das telas de referência, publicação da demo (hospedagem), e, se a proposta for aceita, o sistema de pedidos multicanal (Mercado Livre, Shopee, TikTok, Bling).*

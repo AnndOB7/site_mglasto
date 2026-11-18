@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Products\RelationManagers;
 
 use App\Models\Product;
+use App\Models\ProductImage;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -62,7 +63,7 @@ class ImagesRelationManager extends RelationManager
             ->columns([
                 ImageColumn::make('path')
                     ->label('Foto')
-                    ->disk('public')
+                    ->state(fn (ProductImage $record): string => url($record->url()))
                     ->square()
                     ->imageSize(64),
                 TextColumn::make('alt')

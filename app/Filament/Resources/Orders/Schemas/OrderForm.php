@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Orders\Schemas;
 use App\Enums\OrderChannel;
 use App\Enums\OrderStatus;
 use App\Models\Order;
+use App\Support\BrazilianFormat;
 use App\Support\Money;
 use Filament\Forms\Components\Select;
 use Filament\Infolists\Components\TextEntry;
@@ -46,9 +47,11 @@ class OrderForm
                     ->columns(2)
                     ->schema([
                         TextEntry::make('customer_name')->label('Nome'),
-                        TextEntry::make('customer_phone')->label('Telefone')->placeholder('–'),
+                        TextEntry::make('customer_phone')->label('Telefone')->placeholder('–')
+                            ->formatStateUsing(fn (?string $state): ?string => BrazilianFormat::phone($state)),
                         TextEntry::make('customer_email')->label('E-mail')->placeholder('–'),
-                        TextEntry::make('customer_document')->label('CPF/CNPJ')->placeholder('–'),
+                        TextEntry::make('customer_document')->label('CPF/CNPJ')->placeholder('–')
+                            ->formatStateUsing(fn (?string $state): ?string => BrazilianFormat::document($state)),
                         TextEntry::make('address')
                             ->label('Endereço')
                             ->state(fn (Order $record): string => self::address($record))
@@ -91,7 +94,7 @@ class OrderForm
         $street = collect([$order->shipping_street, $order->shipping_number, $order->shipping_complement])->filter()->implode(', ');
         $city = collect([$order->shipping_district, $order->shipping_city, $order->shipping_state])->filter()->implode(' – ');
 
-        $address = collect([$street, $city, $order->shipping_zip ? "CEP {$order->shipping_zip}" : null])->filter()->implode(' · ');
+        $address = collect([$street, $city, $order->shipping_zip ? 'CEP '.BrazilianFormat::zip($order->shipping_zip) : null])->filter()->implode(' · ');
 
         return $address !== '' ? $address : '–';
     }

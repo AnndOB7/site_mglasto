@@ -26,9 +26,9 @@ class ProductsTable
             ->columns([
                 ImageColumn::make('photo')
                     ->label('Foto')
-                    ->disk('public')
                     ->square()
-                    ->getStateUsing(fn (Product $record): ?string => $record->images->first()?->path),
+                    // Full URL from the address being used, so photos show on any host or port.
+                    ->getStateUsing(fn (Product $record): ?string => ($image = $record->images->first()) ? url($image->url()) : null),
                 TextColumn::make('name')
                     ->label('Nome')
                     ->searchable()

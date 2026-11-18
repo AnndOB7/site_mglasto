@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -166,14 +167,15 @@ class ImportWooCommerceCatalog
      */
     private function importVariants(PendingRequest $client, Product $product, array $data): void
     {
-        $termNames = collect($data['attributes'])->mapWithKeys(fn (array $attribute) => [
-            $attribute['name'] => collect($attribute['terms'])->pluck('name', 'slug'),
+        // Arr::wrap turns a missing list (null) into [], as collect() did before.
+        $termNames = collect(Arr::wrap($data['attributes']))->mapWithKeys(fn (array $attribute) => [
+            $attribute['name'] => collect(Arr::wrap($attribute['terms'] ?? null))->pluck('name', 'slug'),
         ]);
 
         foreach ($data['variations'] as $variation) {
             $remote = $client->get("products/{$variation['id']}")->throw()->json();
 
-            $options = collect($variation['attributes'])->mapWithKeys(fn (array $a) => [
+            $options = collect(Arr::wrap($variation['attributes']))->mapWithKeys(fn (array $a) => [
                 $a['name'] => $termNames[$a['name']][$a['value']] ?? Str::headline($a['value']),
             ])->all();
 
@@ -226,7 +228,7 @@ class ImportWooCommerceCatalog
         $keep = [];
 
         foreach (array_values($images) as $position => $image) {
-            $extension = pathinfo(parse_url($image['src'], PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
+            $extension = pathinfo(parse_url($image['src'], PHP_URL_PATH) ?: '', PATHINFO_EXTENSION) ?: 'jpg';
             $path = "products/{$product->slug}/{$image['id']}.".strtolower($extension);
 
             if (! $disk->exists($path)) {

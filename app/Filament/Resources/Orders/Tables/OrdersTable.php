@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Orders\Tables;
 use App\Enums\OrderChannel;
 use App\Enums\OrderStatus;
 use App\Filament\Resources\Orders\Schemas\OrderForm;
+use App\Support\BrazilianFormat;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -38,7 +39,7 @@ class OrdersTable
                 TextColumn::make('customer_name')
                     ->label('Cliente')
                     ->searchable()
-                    ->description(fn ($record): ?string => $record->customer_phone),
+                    ->description(fn ($record): ?string => BrazilianFormat::phone($record->customer_phone)),
                 TextColumn::make('total')
                     ->label('Total')
                     ->money('BRL', divideBy: 100, locale: 'pt_BR')
