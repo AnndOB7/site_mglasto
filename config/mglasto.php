@@ -22,6 +22,12 @@ return [
     ))),
 
     /*
+     * Número do WhatsApp que recebe os orçamentos, com DDI e DDD.
+     * Ex.: WHATSAPP_NUMBER=5511999999999. Vazio = a loja mostra "[A DEFINIR]".
+     */
+    'whatsapp_number' => env('WHATSAPP_NUMBER'),
+
+    /*
      * Dados da empresa exibidos na loja. Vazio = a loja mostra "[A DEFINIR]".
      * Não invente esses dados: confirme com a MGLASTO antes de preencher.
      */

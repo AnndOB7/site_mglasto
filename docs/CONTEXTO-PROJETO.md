@@ -65,7 +65,7 @@ Repositório: https://github.com/AnndOB7/site_mglasto · pasta local: `C:\dev\si
 | 5 | Painel admin com Filament | 23–24/11 | ✅ |
 | 6 | Guia visual + layout base | 25/11 | ✅ |
 | 7 | Home e categoria com busca | 26–27/11 | ✅ |
-| 8 | Página de produto | 28–29/11 | ⏳ |
+| 8 | Página de produto | 28–29/11 | ✅ |
 | 9 | Carrinho + orçamento via WhatsApp | 30/11–01/12 | ⏳ |
 | 10 | Páginas institucionais | 01/12 | ⏳ (corta primeiro se atrasar) |
 | 11 | Testes, ajustes e demo publicada | 02/12 | ⏳ |

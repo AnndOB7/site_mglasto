@@ -22,9 +22,10 @@ Este guia registra **cada etapa do projeto**: o que foi feito, por que foi feito
 10. [Painel administrativo com Filament](#etapa-10)
 11. [Guia visual: tokens do Tailwind, componentes e layout da loja](#etapa-11)
 12. [Páginas da loja: home, categoria e busca](#etapa-12)
-13. [Checklist para reaproveitar em outros projetos](#checklist)
-14. [Glossário](#glossario)
-15. [Diário do projeto](#diario)
+13. [Página de produto](#etapa-13)
+14. [Checklist para reaproveitar em outros projetos](#checklist)
+15. [Glossário](#glossario)
+16. [Diário do projeto](#diario)
 
 ---
 
@@ -946,6 +947,87 @@ São **2 consultas**, não importa quantos produtos. E o `limit(1)` dentro do `w
 
 ---
 
+<a id="etapa-13"></a>
+## Etapa 13 – Página de produto
+
+**Arquivos:** `app/Http/Controllers/Store/ProductController.php`, `app/Support/HtmlSanitizer.php`, `app/Support/WhatsApp.php`, `app/Models/ProductVariant.php` (`isInStock()`), `resources/views/app.blade.php` (metatags), `resources/js/pages/store/product.tsx`, `tests/Unit/HtmlSanitizerTest.php`, `tests/Feature/Store/ProductPageTest.php`, `tests/Feature/Catalog/VariantStockTest.php`
+
+**O que fizemos:** a página `/produto/{slug}` (o mesmo padrão de endereço do site atual) com galeria de fotos, preço (o promocional risca o normal), disponibilidade, seletor de variações, quantidade, botão "Adicionar ao orçamento", botão "Tirar dúvidas no WhatsApp", descrição e produtos relacionados.
+
+### O seletor de variações
+
+O servidor manda as variações **e** os grupos de opções já organizados:
+```json
+"option_groups": [
+  { "name": "Cor", "values": ["Amarelo", "Azul", "Cinza", "Preto", "Vermelho"] },
+  { "name": "Espessura", "values": ["3 mm"] }
+]
+```
+No React, cada clique guarda a escolha em `selected` (um `useState`). A variação escolhida é a que tem **todas** as opções iguais às escolhidas. Quando ela é encontrada, o preço e a disponibilidade mudam na hora, sem ir ao servidor.
+
+Detalhes que melhoram o uso:
+- Grupos com **um valor só** (Espessura "3 mm") já vêm marcados.
+- Uma opção que não existe junto com as outras já escolhidas fica **desativada**.
+- Enquanto falta escolher, o botão diz **"Escolha uma opção"** e não deixa adicionar.
+
+### Regra do estoque da variação (regra 3 do contexto)
+
+```php
+// app/Models/ProductVariant.php
+public function isInStock(): bool
+{
+    if (! $this->is_active) return false;
+    if ($this->stock_quantity === null || ! $this->product->manage_stock) {
+        return $this->product->isInStock();   // compartilha o estoque do produto
+    }
+    return $this->stock_quantity > 0;          // estoque próprio
+}
+```
+A regra fica **no model**, não na tela: o carrinho (próxima etapa) vai usar a mesma função.
+
+### Segurança: sanitizar o HTML da descrição
+
+A descrição veio de outro sistema e é exibida como HTML (`dangerouslySetInnerHTML`). Se alguém conseguir gravar um `<script>` nela, ele rodaria no navegador de todo cliente. Esse ataque se chama **XSS** (*cross-site scripting*).
+
+O `HtmlSanitizer` usa um **leitor de HTML de verdade** (`DOMDocument`), não expressões regulares, e:
+- **mantém** só as tags simples (`p`, `br`, `strong`, `em`, listas, `h2`–`h4`), **sem nenhum atributo**;
+- **apaga com o conteúdo** `script`, `style`, `iframe`, `svg`...;
+- **desembrulha** o resto (`div`, `span`, `a`): some a tag, fica o texto.
+
+O teste `HtmlSanitizerTest` tenta vários ataques conhecidos (`onerror`, `javascript:`, `<svg><script>`, aspas dentro de atributos) e confere que nenhum passa.
+
+**Por que limpar de novo, se o importador já limpou?** Porque a descrição também pode ser editada no painel, e amanhã pode vir de outro lugar. **Sanitize na saída**, sempre (regra 8).
+
+### Metatags e a pré-visualização no WhatsApp
+
+Quando alguém cola o link de um produto no WhatsApp, aparece um cartão com foto, título e descrição. Quem monta esse cartão é um robô que **não executa JavaScript**, então as metatags precisam vir **no HTML do servidor**:
+```php
+return Inertia::render('store/product', [...])->withViewData('meta', [
+    'title' => $product->name, 'description' => ..., 'image' => url($image->url()), ...
+]);
+```
+O `app.blade.php` escreve as tags `og:title`, `og:description`, `og:image` e `canonical`. As tags `og:` são do protocolo **Open Graph**, usado por WhatsApp, Facebook e LinkedIn.
+
+### Botão do WhatsApp sem número inventado
+
+O número vem de `WHATSAPP_NUMBER` no `.env`. A classe `WhatsApp` remove tudo que não é dígito (aceita `+55 (11) 99999-0000`) e monta `https://wa.me/5511999990000?text=...` com o nome e o link do produto. **Sem número configurado, não existe link**: a página mostra **"[A DEFINIR: número do WhatsApp]"**.
+
+### Problemas encontrados
+
+| Problema | Causa | Solução |
+|---|---|---|
+| A página passava 8 px da tela no celular | No celular a grade tinha uma coluna *implícita*, que cresce até caber o conteúdo; a fila de miniaturas da galeria empurrava a largura | `grid-cols-1` (vira `minmax(0, 1fr)`): a coluna respeita a tela e as miniaturas rolam dentro dela |
+| O verificador de overflow não pegou isso na primeira vez | Ele só procurava elementos além de 376 px, mas a área útil era 360 px (a barra de rolagem ocupa o resto) | Comparar com `clientWidth`, a largura visível real |
+| A trilha mostrava "Início › Oferta" | "Oferta" vinha primeiro pela posição | Preferir uma categoria real; "Oferta" é vitrine, não tipo de produto |
+
+### Para fixar
+- Abra `/produto/piso-borracha-diamante`, escolha uma cor e veja o texto "Opção: ..." mudar. Em que linha do `product.tsx` a variação é encontrada?
+- No `tinker`, rode `App\Support\HtmlSanitizer::clean('<p onclick="x()">Oi<script>alert(1)</script></p>')`. Explique o resultado.
+- Por que as metatags `og:` estão no Blade e não no `<Head>` do React?
+- Coloque um número fictício em `WHATSAPP_NUMBER`, rode `php artisan config:clear` e veja o botão aparecer. (Depois apague.)
+
+---
+
 <a id="checklist"></a>
 ## Checklist para reaproveitar em outros projetos
 
@@ -984,6 +1066,8 @@ São **2 consultas**, não importa quantos produtos. E o `limit(1)` dentro do `w
 - [ ] Dados da empresa vindos de configuração; o que não se sabe aparece como `[A DEFINIR]`
 - [ ] Controllers finos; regras repetidas em classes próprias (ex.: `ProductListing`)
 - [ ] Listas com eager loading (`with`) e um teste que conta consultas
+- [ ] HTML vindo de fora sanitizado **ao exibir**, com parser de HTML e testes de ataques conhecidos
+- [ ] Metatags de compartilhamento no HTML do servidor
 
 **Qualidade**
 - [ ] Testes para cada regra de negócio
@@ -1020,9 +1104,11 @@ São **2 consultas**, não importa quantos produtos. E o `limit(1)` dentro do `w
 | **Migration** | Arquivo que cria ou altera tabelas do banco |
 | **Model** | Classe que representa uma tabela |
 | **N+1** | Problema de desempenho: 1 consulta para a lista e mais 1 para cada item dela |
+| **Open Graph** | Metatags (`og:title`, `og:image`) que definem o cartão de pré-visualização de um link |
 | **Relation manager** | Tabela dentro da página de edição do Filament que gerencia um relacionamento (ex.: variações do produto) |
 | **Resource (Filament)** | Conjunto de telas (listar, criar, editar) de um model no painel |
 | **Route model binding** | O Laravel busca o model pelo parâmetro da rota (`{category:slug}`) e responde 404 se não achar |
+| **Sanitizar** | Limpar um conteúdo deixando só o que é seguro |
 | **Scope** | Filtro reutilizável de consulta (`Product::active()`) |
 | **Seeder** | Script que preenche o banco com dados iniciais |
 | **Shared props (Inertia)** | Dados que o servidor manda para todas as páginas (menu, carrinho) |
@@ -1032,7 +1118,9 @@ São **2 consultas**, não importa quantos produtos. E o `limit(1)` dentro do `w
 | **SVG** | Formato de imagem vetorial: nítido em qualquer tamanho, descrito em código |
 | **Token de design** | Variável com uma decisão visual (cor, raio, sombra) usada em todo o site |
 | **Transação** | Grupo de operações no banco que acontece por inteiro ou não acontece |
+| **useState** | Função do React que guarda um valor da tela e redesenha quando ele muda |
 | **Vite** | Ferramenta que compila o React e o Tailwind |
+| **XSS** | Ataque que injeta código JavaScript numa página para rodar no navegador de outras pessoas |
 
 ---
 
@@ -1080,14 +1168,21 @@ Registro de **tudo** o que muda no projeto, na ordem em que aconteceu. Cada linh
 | 18/11/2026 | Correção: botões e textos longos estouravam a tela do celular | `whitespace-nowrap` e palavras sem quebra; conferido com 375 px reais | `3e47070` | [11](#etapa-11) |
 | 18/11/2026 | `public/**` ignorado pelo formatador (`vite.config.ts`) | Os arquivos do Filament em `public/` são de terceiros | `3e47070` | [11](#etapa-11) |
 | 18/11/2026 | Problema: `npm run check:fix` reformatou os `.md` de `docs/` (tabelas alinhadas, `*itálico*` virou `_itálico_`); arquivos restaurados com `git checkout -- docs/` e `docs/**` ignorado pelo formatador | O formatador do projeto também formata Markdown; documentos escritos à mão não devem ser reescritos por ferramenta | `3e47070` | [11](#etapa-11) |
-| 18/11/2026 | Rotas da loja: `/` (home), `/categoria/{slug}`, `/busca`, `/produto/{slug}` (provisória); página `welcome` do starter kit removida | A loja substitui a página de boas-vindas do Laravel | *(próximo commit)* | [12](#etapa-12) |
-| 18/11/2026 | Home com categorias, vitrine "Ofertas" (`is_featured`) e "Mais produtos" sem repetição | Regra 7 do contexto e defeito do site antigo (produtos repetidos) | *(próximo commit)* | [12](#etapa-12) |
-| 18/11/2026 | Página de categoria (inclui subcategorias) e busca por nome, SKU e SKU de variação, com ordenação por nome e por preço pago | Encontrar produtos por categoria ou código | *(próximo commit)* | [12](#etapa-12) |
-| 18/11/2026 | `ProductListing` e `ProductCardResource` | Regras das listas e formato do card num lugar só; controllers finos | *(próximo commit)* | [12](#etapa-12) |
-| 18/11/2026 | Eager loading da primeira foto e teste que conta consultas (3 vs. 30 produtos) | Evitar o problema N+1 | *(próximo commit)* | [12](#etapa-12) |
-| 18/11/2026 | `withoutVite()` no `TestCase` | Os testes dependiam de `npm run build` ter sido rodado | *(próximo commit)* | [12](#etapa-12) |
-| 18/11/2026 | Busca remove `%`, `_` e `\` do termo | No SQLite o `LIKE` não tem escape padrão; esses caracteres funcionariam como curinga | *(próximo commit)* | [12](#etapa-12) |
-| 18/11/2026 | Tipos do PHPDoc corrigidos e dados da empresa validados ao ler do `config()` | PHPStan nível 7 sem erros no código novo | *(próximo commit)* | [12](#etapa-12) |
+| 18/11/2026 | Rotas da loja: `/` (home), `/categoria/{slug}`, `/busca`, `/produto/{slug}` (provisória); página `welcome` do starter kit removida | A loja substitui a página de boas-vindas do Laravel | `dd23063` | [12](#etapa-12) |
+| 18/11/2026 | Home com categorias, vitrine "Ofertas" (`is_featured`) e "Mais produtos" sem repetição | Regra 7 do contexto e defeito do site antigo (produtos repetidos) | `dd23063` | [12](#etapa-12) |
+| 18/11/2026 | Página de categoria (inclui subcategorias) e busca por nome, SKU e SKU de variação, com ordenação por nome e por preço pago | Encontrar produtos por categoria ou código | `dd23063` | [12](#etapa-12) |
+| 18/11/2026 | `ProductListing` e `ProductCardResource` | Regras das listas e formato do card num lugar só; controllers finos | `dd23063` | [12](#etapa-12) |
+| 18/11/2026 | Eager loading da primeira foto e teste que conta consultas (3 vs. 30 produtos) | Evitar o problema N+1 | `dd23063` | [12](#etapa-12) |
+| 18/11/2026 | `withoutVite()` no `TestCase` | Os testes dependiam de `npm run build` ter sido rodado | `dd23063` | [12](#etapa-12) |
+| 18/11/2026 | Busca remove `%`, `_` e `\` do termo | No SQLite o `LIKE` não tem escape padrão; esses caracteres funcionariam como curinga | `dd23063` | [12](#etapa-12) |
+| 18/11/2026 | Tipos do PHPDoc corrigidos e dados da empresa validados ao ler do `config()` | PHPStan nível 7 sem erros no código novo | `dd23063` | [12](#etapa-12) |
+| 18/11/2026 | Página `/produto/{slug}`: galeria, preço com promoção riscada, disponibilidade, seletor de variações, quantidade, descrição e relacionados | Tarefa 8 da demo | *(próximo commit)* | [13](#etapa-13) |
+| 18/11/2026 | `ProductVariant::isInStock()` (estoque próprio ou compartilhado com o produto) | Regra 3 do contexto num lugar só, para a página e o carrinho | *(próximo commit)* | [13](#etapa-13) |
+| 18/11/2026 | `HtmlSanitizer` com `DOMDocument`: descrição sanitizada ao exibir | Regra 8 do contexto; proteção contra XSS | *(próximo commit)* | [13](#etapa-13) |
+| 18/11/2026 | Metatags Open Graph e `canonical` no HTML do servidor (`withViewData('meta')`) | Pré-visualização do link no WhatsApp e no Google, que não executam JavaScript | *(próximo commit)* | [13](#etapa-13) |
+| 18/11/2026 | `WHATSAPP_NUMBER` (vazio no `.env.example`) e classe `WhatsApp`; sem número, a página mostra `[A DEFINIR]` | Não inventar número de contato | *(próximo commit)* | [13](#etapa-13) |
+| 18/11/2026 | Correção: página de produto passava 8 px da tela no celular (`grid-cols-1`) | Coluna implícita da grade crescia com as miniaturas | *(próximo commit)* | [13](#etapa-13) |
+| 18/11/2026 | Trilha de navegação prefere categoria real a "Oferta"; opção de valor único já vem marcada | Usabilidade | *(próximo commit)* | [13](#etapa-13) |
 
 ---
 

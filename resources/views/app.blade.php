@@ -34,12 +34,27 @@
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
+        @isset($meta)
+            {{-- Rendered by the server so link previews (WhatsApp, Facebook) and search engines see them without JavaScript. --}}
+            <meta name="description" content="{{ $meta['description'] }}">
+            <link rel="canonical" href="{{ $meta['url'] }}">
+            <meta property="og:site_name" content="{{ config('mglasto.company.name', 'MGLASTO') }}">
+            <meta property="og:type" content="{{ $meta['type'] ?? 'website' }}">
+            <meta property="og:title" content="{{ $meta['title'] }}">
+            <meta property="og:description" content="{{ $meta['description'] }}">
+            <meta property="og:url" content="{{ $meta['url'] }}">
+            @if (! empty($meta['image']))
+                <meta property="og:image" content="{{ $meta['image'] }}">
+                <meta name="twitter:card" content="summary_large_image">
+            @endif
+        @endisset
+
         @fonts
 
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])
         <x-inertia::head>
-            <title>{{ config('app.name', 'Laravel') }}</title>
+            <title>{{ isset($meta) ? $meta['title'].' - '.config('app.name', 'Laravel') : config('app.name', 'Laravel') }}</title>
         </x-inertia::head>
     </head>
     <body class="font-sans antialiased">

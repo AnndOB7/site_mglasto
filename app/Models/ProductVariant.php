@@ -57,4 +57,21 @@ class ProductVariant extends Model
     {
         return $this->price ?? $this->product->currentPrice();
     }
+
+    /**
+     * Whether this variant can be added to the cart. A variant without its own
+     * stock shares the product's stock; without stock control it is always available.
+     */
+    public function isInStock(): bool
+    {
+        if (! $this->is_active) {
+            return false;
+        }
+
+        if ($this->stock_quantity === null || ! $this->product->manage_stock) {
+            return $this->product->isInStock();
+        }
+
+        return $this->stock_quantity > 0;
+    }
 }
