@@ -21,9 +21,10 @@ Este guia registra **cada etapa do projeto**: o que foi feito, por que foi feito
 9.1. [Identidade visual: logo e cores](#etapa-9-1)
 10. [Painel administrativo com Filament](#etapa-10)
 11. [Guia visual: tokens do Tailwind, componentes e layout da loja](#etapa-11)
-12. [Checklist para reaproveitar em outros projetos](#checklist)
-13. [Glossário](#glossario)
-14. [Diário do projeto](#diario)
+12. [Páginas da loja: home, categoria e busca](#etapa-12)
+13. [Checklist para reaproveitar em outros projetos](#checklist)
+14. [Glossário](#glossario)
+15. [Diário do projeto](#diario)
 
 ---
 
@@ -867,6 +868,84 @@ Telefone, e-mail, endereço e CNPJ vêm do `.env` (`COMPANY_PHONE`, `COMPANY_EMA
 
 ---
 
+<a id="etapa-12"></a>
+## Etapa 12 – Páginas da loja: home, categoria e busca
+
+**Arquivos:** `routes/web.php`, `app/Http/Controllers/Store/*`, `app/Http/Resources/ProductCardResource.php`, `app/Support/ProductListing.php`, `resources/js/pages/store/{home,category,search}.tsx`, `resources/js/components/store/{product-grid,listing-page}.tsx`, `tests/Feature/Store/StorefrontTest.php`
+
+**O que fizemos:** a loja ganhou suas primeiras páginas de verdade, com o catálogo importado:
+
+| Endereço | Página |
+|---|---|
+| `/` | Home: faixa de abertura, categorias, vitrine "Ofertas" e "Mais produtos" |
+| `/categoria/{slug}` | Produtos da categoria (e das subcategorias), com ordenação e paginação |
+| `/busca?q=...` | Busca por nome e código (SKU). Sem `q`, lista todos os produtos |
+
+### O caminho de uma página, do navegador à tela
+
+```
+navegador → routes/web.php → Controller → Inertia::render('store/category', [dados])
+                                                     ↓
+                               resources/js/pages/store/category.tsx recebe os dados como props
+```
+```php
+// routes/web.php
+Route::get('/categoria/{category:slug}', [CategoryController::class, 'show'])->name('categories.show');
+```
+O `{category:slug}` é o **route model binding**: o Laravel procura a categoria pelo `slug` e entrega o model pronto ao controller. Se não existir, responde **404** sozinho.
+
+### Controllers finos
+
+Cada controller só **busca os dados e escolhe a página**. As regras repetidas ficam em classes próprias:
+
+- **`ProductListing`**: tudo o que as listas têm em comum (só produtos ativos, a primeira foto carregada junto, ordenação, 24 por página).
+- **`ProductCardResource`**: transforma um `Product` nos campos que o card precisa (`name`, `url`, `price`, `sale_price`, `in_stock`, `image`). É um **API Resource** do Laravel: decide exatamente o que vai para o navegador, sem mandar colunas internas como `woo_id`.
+
+### Decisões importantes (e o porquê)
+
+**1. Ordenar pelo preço que o cliente paga.** Um produto de R$ 500 em promoção por R$ 10 deve aparecer entre os mais baratos:
+```php
+$query->orderByRaw('COALESCE(sale_price, price) asc');
+```
+`COALESCE` devolve o primeiro valor que não é nulo: o preço promocional se existir, senão o normal. É a regra 2 do contexto (`currentPrice()`) escrita em SQL.
+
+**2. Sem produtos repetidos na home.** A vitrine "Mais produtos" exclui os que já estão em "Ofertas" (`whereKeyNot($featured->modelKeys())`), um dos defeitos do site antigo.
+
+**3. Busca por palavras, em qualquer ordem.** "diamante piso" encontra "PISO BORRACHA DIAMANTE": cada palavra precisa aparecer no nome **ou** no SKU do produto **ou** no SKU de uma variação.
+
+**4. Endereços prontos no servidor.** Cada produto e categoria chega ao React com `url` gerada por `route('products.show', $slug, absolute: false)`. O React só usa, nunca monta URL. Se a rota mudar, muda num lugar só.
+
+**5. Fotos com endereço relativo** (`/storage/products/...`), que funciona em qualquer domínio ou porta sem depender do `APP_URL`.
+
+### Evitando o problema N+1
+
+Mostrar 24 produtos com foto pode virar **25 consultas** ao banco: 1 para os produtos e mais 1 para a foto de *cada* produto. Esse é o problema **N+1**. A solução é o **eager loading**, que carrega tudo junto:
+```php
+Product::query()->active()->with(['images' => fn ($query) => $query->limit(1)]);
+```
+São **2 consultas**, não importa quantos produtos. E o `limit(1)` dentro do `with` (recurso do Laravel 11+) traz só a primeira foto de cada produto.
+
+**Como garantimos:** um teste conta as consultas com 3 produtos e com 30. Se alguém tirar o `with()`, o número cresce e o teste falha.
+
+### Problemas encontrados
+
+| Problema | Causa | Solução |
+|---|---|---|
+| Testes quebraram com `Unable to locate file in Vite manifest` | Os testes renderizavam o HTML usando o *build* do front-end; página nova sem `npm run build` = erro | `$this->withoutVite()` no `tests/TestCase.php`: teste confere o servidor, não o build |
+| O teste "busca com `%`" passava pelo motivo errado | No SQLite, o `LIKE` não tem caractere de escape padrão: `\%` não protegia nada | Remover `%`, `_` e `\` do termo (não fazem sentido numa busca de produto) e testar com `L%l`, que *casaria* com "Lencol" se o `%` funcionasse como curinga |
+| No celular, nomes de categoria cortados ("Infraestrut e...") | Imagem e texto lado a lado em cards estreitos | Imagem em cima do texto no celular, lado a lado a partir de `sm` |
+| Textos de destaque da home inventavam promessas ("Enviamos para todo o Brasil") | Texto de exemplo escrito sem confirmar com a empresa | Trocados por descrições do próprio funcionamento da loja (orçamento sem cadastro, envio pelo WhatsApp) |
+
+**Limitação conhecida:** a busca não ignora acentos: "marmore" não encontra "MÁRMORE". O SQLite não tem essa função pronta. Fica para quando o banco for MySQL, que já compara sem acento por padrão.
+
+### Para fixar
+- Acesse `/categoria/pisos-e-revestimentos?ordem=menor-preco` e confira a ordem com os preços do painel.
+- Comente o `->with([...])` em `ProductListing::query()` e rode `php artisan test --filter=queries`. Por que o teste falhou? (Depois desfaça.)
+- O que acontece ao acessar `/categoria/nao-existe`? Qual linha do código produz esse resultado?
+- Explique com suas palavras por que o React recebe `url` pronta em vez de montar `/produto/` + slug.
+
+---
+
 <a id="checklist"></a>
 ## Checklist para reaproveitar em outros projetos
 
@@ -903,12 +982,16 @@ Telefone, e-mail, endereço e CNPJ vêm do `.env` (`COMPANY_PHONE`, `COMPANY_EMA
 - [ ] Cores e tamanhos da marca em tokens (`@theme`), não espalhados em classes
 - [ ] Contraste de texto de pelo menos 4,5:1
 - [ ] Dados da empresa vindos de configuração; o que não se sabe aparece como `[A DEFINIR]`
+- [ ] Controllers finos; regras repetidas em classes próprias (ex.: `ProductListing`)
+- [ ] Listas com eager loading (`with`) e um teste que conta consultas
 
 **Qualidade**
 - [ ] Testes para cada regra de negócio
 - [ ] `php artisan test` passando antes de cada commit
 - [ ] Depois de importar ou migrar dados, conferi com consultas
 - [ ] Páginas conferidas com 375 px reais de largura (nada passa da tela)
+- [ ] Testes que não dependem do build do front-end (`withoutVite()`)
+- [ ] Teste de busca que falharia se o defeito existisse (não só um que passa)
 
 ---
 
@@ -918,9 +1001,12 @@ Telefone, e-mail, endereço e CNPJ vêm do `.env` (`COMPANY_PHONE`, `COMPANY_EMA
 | Termo | Significado |
 |---|---|
 | **403** | Código HTTP de "proibido": a pessoa está logada, mas não tem permissão |
+| **API Resource** | Classe do Laravel que define exatamente quais campos de um model vão para o navegador |
 | **Artisan** | Ferramenta de linha de comando do Laravel (`php artisan ...`) |
+| **COALESCE** | Função SQL que devolve o primeiro valor não nulo de uma lista |
 | **Composer** | Instala pacotes PHP (lista em `composer.json`) |
 | **Contraste (WCAG)** | Diferença de luminosidade entre texto e fundo; mínimo de 4,5:1 para texto normal |
+| **Eager loading** | Carregar relacionamentos junto com a consulta principal (`with()`), evitando o N+1 |
 | **Eloquent** | O sistema de models do Laravel |
 | **Enum** | Tipo com um conjunto fixo de valores |
 | **Factory** | Gerador de dados falsos para testes |
@@ -933,8 +1019,10 @@ Telefone, e-mail, endereço e CNPJ vêm do `.env` (`COMPANY_PHONE`, `COMPANY_EMA
 | **Livewire** | Telas em PHP que se atualizam sem recarregar a página; o Filament é feito com ele |
 | **Migration** | Arquivo que cria ou altera tabelas do banco |
 | **Model** | Classe que representa uma tabela |
+| **N+1** | Problema de desempenho: 1 consulta para a lista e mais 1 para cada item dela |
 | **Relation manager** | Tabela dentro da página de edição do Filament que gerencia um relacionamento (ex.: variações do produto) |
 | **Resource (Filament)** | Conjunto de telas (listar, criar, editar) de um model no painel |
+| **Route model binding** | O Laravel busca o model pelo parâmetro da rota (`{category:slug}`) e responde 404 se não achar |
 | **Scope** | Filtro reutilizável de consulta (`Product::active()`) |
 | **Seeder** | Script que preenche o banco com dados iniciais |
 | **Shared props (Inertia)** | Dados que o servidor manda para todas as páginas (menu, carrinho) |
@@ -983,15 +1071,23 @@ Registro de **tudo** o que muda no projeto, na ordem em que aconteceu. Cada linh
 | 18/11/2026 | Telas de categorias, produtos (com variações e fotos) e pedidos (só o status é editável) | Cadastro do catálogo e acompanhamento de pedidos | `996c0e6` | [10](#etapa-10) |
 | 18/11/2026 | Validação nova: preço promocional menor que o normal | Evita promoção mais cara que o preço cheio (decisão a revisar) | `996c0e6` | [10](#etapa-10) |
 | 18/11/2026 | 32 testes novos (conversão de dinheiro, acesso ao painel, formulários de produto e pedido) | Proteger as regras de dinheiro e de acesso | `996c0e6` | [10](#etapa-10) |
-| 18/11/2026 | Tokens da marca no `@theme` do Tailwind (cores, raios, sombras, alvo de toque de 44 px) e fonte Inter | Visual inteiro ajustável num lugar só, até chegarem as telas de referência | *(próximo commit)* | [11](#etapa-11) |
-| 18/11/2026 | Token `brand-ink` (`#C25400`) para texto laranja | Laranja `#FF7A00` sobre branco tem contraste 2,6:1, abaixo do mínimo de 4,5:1 | *(próximo commit)* | [11](#etapa-11) |
-| 18/11/2026 | Componentes `Button`, `ButtonLink`, `Badge`, `Price`, `ProductCard`, `Container` em `components/store/` | Peças reutilizáveis da loja, separadas das do starter kit | *(próximo commit)* | [11](#etapa-11) |
-| 18/11/2026 | `StoreLayout` (cabeçalho com busca e carrinho, menu de categorias, menu hambúrguer, rodapé grafite) e dados compartilhados `store` | Layout único para todas as páginas da loja | *(próximo commit)* | [11](#etapa-11) |
-| 18/11/2026 | Dados da empresa em `config/mglasto.php` lidos do `.env`; vazios aparecem como `[A DEFINIR]` | Não inventar telefone, CNPJ ou endereço | *(próximo commit)* | [11](#etapa-11) |
-| 18/11/2026 | Página `/guia-visual` (fora de produção) | Revisar e ajustar o visual num lugar só | *(próximo commit)* | [11](#etapa-11) |
-| 18/11/2026 | Correção: botões e textos longos estouravam a tela do celular | `whitespace-nowrap` e palavras sem quebra; conferido com 375 px reais | *(próximo commit)* | [11](#etapa-11) |
-| 18/11/2026 | `public/**` ignorado pelo formatador (`vite.config.ts`) | Os arquivos do Filament em `public/` são de terceiros | *(próximo commit)* | [11](#etapa-11) |
-| 18/11/2026 | Problema: `npm run check:fix` reformatou os `.md` de `docs/` (tabelas alinhadas, `*itálico*` virou `_itálico_`); arquivos restaurados com `git checkout -- docs/` e `docs/**` ignorado pelo formatador | O formatador do projeto também formata Markdown; documentos escritos à mão não devem ser reescritos por ferramenta | *(próximo commit)* | [11](#etapa-11) |
+| 18/11/2026 | Tokens da marca no `@theme` do Tailwind (cores, raios, sombras, alvo de toque de 44 px) e fonte Inter | Visual inteiro ajustável num lugar só, até chegarem as telas de referência | `3e47070` | [11](#etapa-11) |
+| 18/11/2026 | Token `brand-ink` (`#C25400`) para texto laranja | Laranja `#FF7A00` sobre branco tem contraste 2,6:1, abaixo do mínimo de 4,5:1 | `3e47070` | [11](#etapa-11) |
+| 18/11/2026 | Componentes `Button`, `ButtonLink`, `Badge`, `Price`, `ProductCard`, `Container` em `components/store/` | Peças reutilizáveis da loja, separadas das do starter kit | `3e47070` | [11](#etapa-11) |
+| 18/11/2026 | `StoreLayout` (cabeçalho com busca e carrinho, menu de categorias, menu hambúrguer, rodapé grafite) e dados compartilhados `store` | Layout único para todas as páginas da loja | `3e47070` | [11](#etapa-11) |
+| 18/11/2026 | Dados da empresa em `config/mglasto.php` lidos do `.env`; vazios aparecem como `[A DEFINIR]` | Não inventar telefone, CNPJ ou endereço | `3e47070` | [11](#etapa-11) |
+| 18/11/2026 | Página `/guia-visual` (fora de produção) | Revisar e ajustar o visual num lugar só | `3e47070` | [11](#etapa-11) |
+| 18/11/2026 | Correção: botões e textos longos estouravam a tela do celular | `whitespace-nowrap` e palavras sem quebra; conferido com 375 px reais | `3e47070` | [11](#etapa-11) |
+| 18/11/2026 | `public/**` ignorado pelo formatador (`vite.config.ts`) | Os arquivos do Filament em `public/` são de terceiros | `3e47070` | [11](#etapa-11) |
+| 18/11/2026 | Problema: `npm run check:fix` reformatou os `.md` de `docs/` (tabelas alinhadas, `*itálico*` virou `_itálico_`); arquivos restaurados com `git checkout -- docs/` e `docs/**` ignorado pelo formatador | O formatador do projeto também formata Markdown; documentos escritos à mão não devem ser reescritos por ferramenta | `3e47070` | [11](#etapa-11) |
+| 18/11/2026 | Rotas da loja: `/` (home), `/categoria/{slug}`, `/busca`, `/produto/{slug}` (provisória); página `welcome` do starter kit removida | A loja substitui a página de boas-vindas do Laravel | *(próximo commit)* | [12](#etapa-12) |
+| 18/11/2026 | Home com categorias, vitrine "Ofertas" (`is_featured`) e "Mais produtos" sem repetição | Regra 7 do contexto e defeito do site antigo (produtos repetidos) | *(próximo commit)* | [12](#etapa-12) |
+| 18/11/2026 | Página de categoria (inclui subcategorias) e busca por nome, SKU e SKU de variação, com ordenação por nome e por preço pago | Encontrar produtos por categoria ou código | *(próximo commit)* | [12](#etapa-12) |
+| 18/11/2026 | `ProductListing` e `ProductCardResource` | Regras das listas e formato do card num lugar só; controllers finos | *(próximo commit)* | [12](#etapa-12) |
+| 18/11/2026 | Eager loading da primeira foto e teste que conta consultas (3 vs. 30 produtos) | Evitar o problema N+1 | *(próximo commit)* | [12](#etapa-12) |
+| 18/11/2026 | `withoutVite()` no `TestCase` | Os testes dependiam de `npm run build` ter sido rodado | *(próximo commit)* | [12](#etapa-12) |
+| 18/11/2026 | Busca remove `%`, `_` e `\` do termo | No SQLite o `LIKE` não tem escape padrão; esses caracteres funcionariam como curinga | *(próximo commit)* | [12](#etapa-12) |
+| 18/11/2026 | Tipos do PHPDoc corrigidos e dados da empresa validados ao ler do `config()` | PHPStan nível 7 sem erros no código novo | *(próximo commit)* | [12](#etapa-12) |
 
 ---
 

@@ -27,4 +27,13 @@ class ProductImage extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    /**
+     * Address of the photo on the site. Relative ("/storage/..."), so it works
+     * on any domain or port without depending on APP_URL.
+     */
+    public function url(): string
+    {
+        return '/storage/'.ltrim($this->path, '/');
+    }
 }

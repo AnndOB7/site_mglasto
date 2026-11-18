@@ -1,11 +1,22 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Store\CategoryController;
+use App\Http\Controllers\Store\HomeController;
+use App\Http\Controllers\Store\ProductController;
+use App\Http\Controllers\Store\SearchController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'welcome')->name('home');
+/*
+| Loja (páginas públicas). Endereços em português, no mesmo padrão do site
+| atual (/produto/...), o que facilita redirecionamentos no futuro.
+*/
+Route::get('/', HomeController::class)->name('home');
+Route::get('/categoria/{category:slug}', [CategoryController::class, 'show'])->name('categories.show');
+Route::get('/produto/{product:slug}', [ProductController::class, 'show'])->name('products.show');
+Route::get('/busca', SearchController::class)->name('search');
 
 if (! app()->isProduction()) {
     Route::inertia('/guia-visual', 'store/style-guide')->name('style-guide');

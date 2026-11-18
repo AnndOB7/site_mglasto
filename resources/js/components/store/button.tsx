@@ -57,7 +57,7 @@ export function Button({
     );
 }
 
-type ButtonLinkProps = ComponentProps<typeof Link> &
+type ButtonLinkProps = Omit<ComponentProps<typeof Link>, 'size'> &
     Variants & {
         /** Opens an external site (e.g. WhatsApp) in a new tab with a plain <a>. */
         external?: boolean;
