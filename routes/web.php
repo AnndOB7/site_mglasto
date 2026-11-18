@@ -7,6 +7,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
 
+if (! app()->isProduction()) {
+    Route::inertia('/guia-visual', 'store/style-guide')->name('style-guide');
+}
+
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {

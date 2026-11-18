@@ -1,4 +1,5 @@
 import type { Auth } from '@/types/auth';
+import type { StoreShared } from '@/types/store';
 import type { Team } from '@/types/teams';
 
 declare module 'react' {
@@ -15,6 +16,7 @@ declare module '@inertiajs/core' {
             sidebarOpen: boolean;
             currentTeam: Team | null;
             teams: Team[];
+            store: StoreShared;
             [key: string]: unknown;
         };
     }

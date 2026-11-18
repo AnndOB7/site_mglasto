@@ -21,4 +21,16 @@ return [
         explode(',', (string) env('ADMIN_EMAILS', '')),
     ))),
 
+    /*
+     * Dados da empresa exibidos na loja. Vazio = a loja mostra "[A DEFINIR]".
+     * Não invente esses dados: confirme com a MGLASTO antes de preencher.
+     */
+    'company' => [
+        'name' => env('COMPANY_NAME', 'MGLASTO'),
+        'phone' => env('COMPANY_PHONE') ?: null,
+        'email' => env('COMPANY_EMAIL') ?: null,
+        'address' => env('COMPANY_ADDRESS') ?: null,
+        'document' => env('COMPANY_CNPJ') ?: null,
+    ],
+
 ];

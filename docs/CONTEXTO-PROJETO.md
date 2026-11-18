@@ -43,7 +43,9 @@ Repositório: https://github.com/AnndOB7/site_mglasto · pasta local: `C:\dev\si
 - **Enums:** `OrderChannel` (site, mercado_livre, shopee, tiktok, whatsapp) e `OrderStatus` (quote, confirmed, picking, shipped, delivered, cancelled), ambos com `label()` em português.
 - **Importador:** `php artisan mglasto:importar-woocommerce [--url=] [--sem-imagens]`. Lê a Store API pública do WooCommerce, é idempotente (casa por `woo_id`) e baixa fotos para `storage/app/public/products/{slug}/`. Requer `php artisan storage:link`.
 - **Painel `/admin` (Filament 5):** categorias, produtos (com variações e fotos) e pedidos (só o status é editável). Acesso só para e-mails em `ADMIN_EMAILS` (`config/mglasto.php`). Preços digitados em reais e gravados em centavos via `App\Support\Money` / `App\Filament\Forms\MoneyInput`.
-- **Testes:** `tests/Feature/Catalog/`, `tests/Feature/Admin/`, `tests/Unit/MoneyTest.php`.
+- **Visual da loja:** tokens no `@theme` de `resources/css/app.css` (`brand`, `brand-ink` para texto laranja, `graphite`, `surface`...), componentes em `resources/js/components/store/`, layout `resources/js/layouts/store-layout.tsx` (páginas em `pages/store/` usam ele). Dados do cabeçalho/rodapé no shared prop `store` (`App\Support\StoreLayoutData`). Guia visual em `/guia-visual` (fora de produção).
+- **Dados da empresa:** `config('mglasto.company')`, lidos de `COMPANY_*` no `.env`. Vazios aparecem como `[A DEFINIR]`.
+- **Testes:** `tests/Feature/Catalog/`, `tests/Feature/Admin/`, `tests/Feature/Store/`, `tests/Unit/MoneyTest.php`.
 
 ### Particularidades da loja atual (descobertas na importação)
 
@@ -60,7 +62,7 @@ Repositório: https://github.com/AnndOB7/site_mglasto · pasta local: `C:\dev\si
 | 3 | Banco: catálogo e pedidos multicanal | 21/11 | ✅ |
 | 4 | Importar catálogo do WooCommerce | 22/11 | ✅ |
 | 5 | Painel admin com Filament | 23–24/11 | ✅ |
-| 6 | Guia visual + layout base | 25/11 | ⏳ |
+| 6 | Guia visual + layout base | 25/11 | ✅ |
 | 7 | Home e categoria com busca | 26–27/11 | ⏳ |
 | 8 | Página de produto | 28–29/11 | ⏳ |
 | 9 | Carrinho + orçamento via WhatsApp | 30/11–01/12 | ⏳ |

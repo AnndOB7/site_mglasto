@@ -9,9 +9,33 @@
 
 @theme {
     --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
-        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-        'Noto Color Emoji';
+        'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+        'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /*
+     * Tokens da loja MGLASTO. Para mudar o visual, mude aqui:
+     * cada token vira classes do Tailwind (bg-brand, text-graphite, rounded-card...).
+     */
+    --color-brand: #ff7a00; /* laranja principal: botões, selos, destaques */
+    --color-brand-hover: #ff6000; /* laranja ao passar o mouse */
+    --color-brand-soft: #fff3e8; /* fundo de seções e selos claros */
+    --color-brand-ink: #c25400; /* laranja para TEXTO sobre branco (contraste 4,6:1) */
+    --color-graphite: #1c1d1c; /* textos principais, rodapé */
+    --color-graphite-soft: #54595f; /* textos secundários */
+    --color-line: #e9e9e9; /* bordas e divisórias */
+    --color-surface: #f5f5f5; /* fundo de cards e seções */
+    --color-success: #15803d;
+    --color-danger: #b91c1c;
+
+    --radius-control: 0.5rem; /* botões e campos */
+    --radius-card: 0.75rem; /* cards e caixas */
+
+    --shadow-card:
+        0 1px 2px rgb(28 29 28 / 0.06), 0 1px 3px rgb(28 29 28 / 0.1);
+    --shadow-card-hover:
+        0 4px 6px rgb(28 29 28 / 0.06), 0 10px 15px rgb(28 29 28 / 0.1);
+
+    --spacing-touch: 2.75rem; /* 44 px: alvo de toque mínimo */
 
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
@@ -130,6 +154,16 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(0.269 0 0);
     --sidebar-ring: oklch(0.439 0 0);
+}
+
+/*
+ * A loja é sempre clara, mesmo quando a área logada está no modo escuro.
+ * Também troca as bordas e o foco padrão do starter kit pelas cores da marca.
+ */
+.store {
+    color-scheme: light;
+    --border: var(--color-line);
+    --ring: var(--color-brand);
 }
 
 @layer base {

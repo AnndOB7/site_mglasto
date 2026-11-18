@@ -20,9 +20,10 @@ Este guia registra **cada etapa do projeto**: o que foi feito, por que foi feito
 9. [Trabalhando com um agente de IA no projeto](#etapa-9)
 9.1. [Identidade visual: logo e cores](#etapa-9-1)
 10. [Painel administrativo com Filament](#etapa-10)
-11. [Checklist para reaproveitar em outros projetos](#checklist)
-12. [Glossário](#glossario)
-13. [Diário do projeto](#diario)
+11. [Guia visual: tokens do Tailwind, componentes e layout da loja](#etapa-11)
+12. [Checklist para reaproveitar em outros projetos](#checklist)
+13. [Glossário](#glossario)
+14. [Diário do projeto](#diario)
 
 ---
 
@@ -760,6 +761,112 @@ php artisan make:filament-user
 
 ---
 
+<a id="etapa-11"></a>
+## Etapa 11 – Guia visual: tokens do Tailwind, componentes e layout da loja
+
+**Arquivos:** `resources/css/app.css` (bloco `@theme`), `resources/js/components/store/*`, `resources/js/layouts/store-layout.tsx`, `resources/js/lib/money.ts`, `resources/js/types/store.ts`, `resources/js/pages/store/style-guide.tsx`, `app/Support/StoreLayoutData.php`, `config/mglasto.php`
+
+**O que fizemos:** definimos as cores, a fonte e os tamanhos da marca num lugar só, criamos as peças reutilizáveis da loja (botão, card de produto, preço, selo, container) e o layout com cabeçalho, menu e rodapé. A página **`/guia-visual`** mostra tudo junto, para revisar e ajustar o visual (ela não existe em produção).
+
+### Tokens: o visual inteiro num lugar só
+
+No Tailwind 4 a configuração fica **no CSS**, dentro de `@theme`. Cada variável vira classes automaticamente:
+```css
+@theme {
+    --color-brand: #ff7a00;      /* vira bg-brand, text-brand, border-brand... */
+    --color-graphite: #1c1d1c;   /* vira text-graphite, bg-graphite... */
+    --radius-card: 0.75rem;      /* vira rounded-card */
+    --shadow-card: ...;          /* vira shadow-card */
+    --spacing-touch: 2.75rem;    /* vira min-h-touch, size-touch (44 px) */
+}
+```
+**Por que isso importa:** quando o André mandar as telas de referência, trocar o laranja ou o arredondamento é mudar **uma linha**, e o site inteiro acompanha. Se tivéssemos escrito `bg-[#FF7A00]` em cada botão, seria preciso caçar e trocar em dezenas de arquivos.
+
+### Contraste: por que existe um "laranja para texto"
+
+O contraste entre a cor do texto e o fundo precisa ser de pelo menos **4,5:1** para texto normal (regra WCAG de acessibilidade).
+
+| Combinação | Contraste | Pode usar? |
+|---|---|---|
+| Laranja `#FF7A00` sobre branco | 2,6:1 | ❌ para texto |
+| Grafite `#1C1D1C` sobre laranja | 6,5:1 | ✅ botões e selos |
+| Laranja escuro `#C25400` sobre branco | 4,6:1 | ✅ links ("Ver produto") |
+| Laranja `#FF7A00` sobre grafite | 6,5:1 | ✅ hover no rodapé |
+
+Por isso criamos o token `brand-ink` (`#C25400`): o laranja da marca continua nos fundos, e o texto laranja usa a versão escura.
+
+### Componentes reutilizáveis
+
+Ficam em `resources/js/components/store/`, separados de `components/ui/` (que são do starter kit e da área logada):
+
+| Componente | O que faz |
+|---|---|
+| `Container` | Centraliza o conteúdo com as mesmas margens laterais em todas as páginas |
+| `Button` / `ButtonLink` | Botão laranja com texto grafite (e variações), altura mínima de 44 px. `ButtonLink` é um link com cara de botão; com `external` abre outro site (WhatsApp) em nova aba |
+| `Badge` | Selo: "Oferta", "Esgotado"... |
+| `Price` | Recebe **centavos** e mostra `R$ 88,60`; com promoção, risca o preço normal |
+| `ProductCard` | Foto quadrada, nome em até 2 linhas, preço, selo "Oferta" |
+
+Os botões usam o `cva` (*class-variance-authority*), que organiza as variações de um componente:
+```tsx
+<Button>Adicionar ao orçamento</Button>             // laranja (padrão)
+<Button variant="outline" size="lg" block>...</Button>
+```
+
+**Dinheiro no React:** o servidor sempre manda centavos, e a formatação é feita só para exibir:
+```ts
+new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(8860 / 100) // "R$ 88,60"
+```
+Nunca faça conta com o texto formatado.
+
+### O layout da loja (`StoreLayout`)
+
+- **Cabeçalho fixo:** logo, busca (no celular fica numa linha própria, bem visível) e o link do orçamento com contador de itens.
+- **Menu de categorias:** em linha no computador; no celular, um menu lateral (hambúrguer) que fecha com Esc, com o botão X ou tocando fora.
+- **Rodapé grafite** com o logo para fundo escuro, categorias, links de ajuda e contato.
+- **Link "Pular para o conteúdo"**, que só aparece ao navegar pelo teclado (acessibilidade).
+
+O `app.tsx` escolhe o layout pelo nome da página: tudo em `pages/store/` usa o `StoreLayout`.
+
+### De onde vêm os dados do cabeçalho e do rodapé
+
+O menu de categorias, o contador do carrinho e os dados da empresa são **iguais em todas as páginas**. Em vez de cada controller mandar isso, o middleware do Inertia compartilha com todas as páginas:
+```php
+// app/Http/Middleware/HandleInertiaRequests.php
+'store' => fn () => StoreLayoutData::make($request),
+```
+No React: `const { store } = usePage().props;`
+
+### Dados da empresa: nada inventado
+
+Telefone, e-mail, endereço e CNPJ vêm do `.env` (`COMPANY_PHONE`, `COMPANY_EMAIL`, `COMPANY_ADDRESS`, `COMPANY_CNPJ`). Enquanto estiverem vazios, a loja mostra **`[A DEFINIR]`** bem visível, em vez de um dado falso que alguém poderia achar que é verdadeiro.
+
+### Decisões tomadas (e o porquê)
+
+- **A loja é sempre clara.** O starter kit tem modo escuro na área logada, mas a identidade da MGLASTO é "muito branco". A classe `.store` no CSS garante isso.
+- **O card inteiro é um link**, com "Ver produto" como chamada. Um botão dentro de um link é proibido em HTML, e o card inteiro clicável é mais fácil de tocar no celular.
+- **Fonte Inter** carregada pelo próprio Vite (`bunny('Inter')` no `vite.config.ts`), sem link manual.
+- **Os endereços vêm prontos do servidor** (`url` em cada produto e categoria), e o React não monta URLs.
+
+### Problemas encontrados
+
+| Problema | Causa | Solução |
+|---|---|---|
+| No celular, a página ficava mais larga que a tela | O botão tinha `whitespace-nowrap`: texto longo não quebra e empurra a página | Tirar o `nowrap`; o botão pode ter duas linhas |
+| Caminhos de arquivo em `<code>` também empurravam a página | Palavras longas sem espaço não quebram | `break-all` nesses trechos |
+| O screenshot "de 375 px" saía cortado | O Chrome sem interface (*headless*) não abre janelas com menos de **504 px**: a imagem era um recorte de uma página de 504 px | Abrir a página dentro de um `<iframe>` de 375 px e medir com JavaScript se algum elemento passa da largura |
+| `npm run check` acusava 45 arquivos | O formatador olhava os arquivos do Filament em `public/` (código de terceiros) | `public/**` nos `ignorePatterns` do formatador |
+
+**Lição:** confira o resultado **na largura real do celular**. "Rodou sem erro" não quer dizer "cabe na tela".
+
+### Para fixar
+- Abra `/guia-visual`, troque `--color-brand` em `app.css` por outra cor e veja todos os botões e selos mudarem.
+- Por que o texto dos botões laranja é grafite e não branco?
+- Use o DevTools do navegador (F12 → ícone de celular) para ver o `/guia-visual` com 375 px.
+- Crie uma variação `danger` no `Button` (fundo vermelho) e use na página do guia.
+
+---
+
 <a id="checklist"></a>
 ## Checklist para reaproveitar em outros projetos
 
@@ -793,11 +900,15 @@ php artisan make:filament-user
 - [ ] Dados de fora sempre validados e limpos
 - [ ] Conversão de dinheiro (tela ↔ banco) numa classe só, com testes
 - [ ] Painel administrativo com acesso restrito e testado (403 para quem não pode)
+- [ ] Cores e tamanhos da marca em tokens (`@theme`), não espalhados em classes
+- [ ] Contraste de texto de pelo menos 4,5:1
+- [ ] Dados da empresa vindos de configuração; o que não se sabe aparece como `[A DEFINIR]`
 
 **Qualidade**
 - [ ] Testes para cada regra de negócio
 - [ ] `php artisan test` passando antes de cada commit
 - [ ] Depois de importar ou migrar dados, conferi com consultas
+- [ ] Páginas conferidas com 375 px reais de largura (nada passa da tela)
 
 ---
 
@@ -809,12 +920,14 @@ php artisan make:filament-user
 | **403** | Código HTTP de "proibido": a pessoa está logada, mas não tem permissão |
 | **Artisan** | Ferramenta de linha de comando do Laravel (`php artisan ...`) |
 | **Composer** | Instala pacotes PHP (lista em `composer.json`) |
+| **Contraste (WCAG)** | Diferença de luminosidade entre texto e fundo; mínimo de 4,5:1 para texto normal |
 | **Eloquent** | O sistema de models do Laravel |
 | **Enum** | Tipo com um conjunto fixo de valores |
 | **Factory** | Gerador de dados falsos para testes |
 | **Favicon** | Ícone do site na aba do navegador |
 | **Filament** | Pacote que gera telas de administração (listas, formulários) a partir dos models |
 | **Flat (design plano)** | Estilo sem relevo, sombras ou brilho |
+| **Headless** | Navegador rodando sem janela, usado para testes e screenshots |
 | **Idempotente** | Pode rodar várias vezes com o mesmo resultado, sem duplicar |
 | **Inertia** | Liga o Laravel ao React sem precisar de uma API separada |
 | **Livewire** | Telas em PHP que se atualizam sem recarregar a página; o Filament é feito com ele |
@@ -824,10 +937,12 @@ php artisan make:filament-user
 | **Resource (Filament)** | Conjunto de telas (listar, criar, editar) de um model no painel |
 | **Scope** | Filtro reutilizável de consulta (`Product::active()`) |
 | **Seeder** | Script que preenche o banco com dados iniciais |
+| **Shared props (Inertia)** | Dados que o servidor manda para todas as páginas (menu, carrinho) |
 | **SKU** | Código interno do produto |
 | **Slug** | Versão do nome usada em URLs (`piso-borracha-diamante`) |
 | **Soft delete** | "Apagar" marcando a data, sem remover de verdade |
 | **SVG** | Formato de imagem vetorial: nítido em qualquer tamanho, descrito em código |
+| **Token de design** | Variável com uma decisão visual (cor, raio, sombra) usada em todo o site |
 | **Transação** | Grupo de operações no banco que acontece por inteiro ou não acontece |
 | **Vite** | Ferramenta que compila o React e o Tailwind |
 
@@ -862,12 +977,21 @@ Registro de **tudo** o que muda no projeto, na ordem em que aconteceu. Cada linh
 | 18/11/2026 | Paleta de cores definida a partir do site atual | Base do guia visual (tarefa 6) | `2a3ada6` | [9.1](#etapa-9-1) |
 | 18/11/2026 | Commit da identidade visual no `main` e criação da branch `demo` para as tarefas 5 a 11 | O André vai revisar a demo antes de juntar no `main` | `2a3ada6` | [9](#etapa-9) |
 | 18/11/2026 | Extensões `intl` e `gd` ativadas no `C:\PHP\php.ini` | O Filament exige `intl`; `gd` trata imagens | – (fora do repositório) | [10](#etapa-10) |
-| 18/11/2026 | Filament 5.11.4 instalado, painel em `/admin` com cores e logo da MGLASTO; `filament:upgrade` no `post-autoload-dump` do Composer | Painel administrativo pronto sem escrever telas do zero | *(próximo commit)* | [10](#etapa-10) |
-| 18/11/2026 | Acesso ao painel só para e-mails de `ADMIN_EMAILS` (`config/mglasto.php`, `User::canAccessPanel`) | Qualquer um pode se cadastrar no site, mas só a equipe entra no painel | *(próximo commit)* | [10](#etapa-10) |
-| 18/11/2026 | Classe `App\Support\Money` e campo `MoneyInput`: preço digitado em reais, gravado em centavos | Um erro nessa conversão multiplicaria ou dividiria todos os preços por 100 | *(próximo commit)* | [10](#etapa-10) |
-| 18/11/2026 | Telas de categorias, produtos (com variações e fotos) e pedidos (só o status é editável) | Cadastro do catálogo e acompanhamento de pedidos | *(próximo commit)* | [10](#etapa-10) |
-| 18/11/2026 | Validação nova: preço promocional menor que o normal | Evita promoção mais cara que o preço cheio (decisão a revisar) | *(próximo commit)* | [10](#etapa-10) |
-| 18/11/2026 | 32 testes novos (conversão de dinheiro, acesso ao painel, formulários de produto e pedido) | Proteger as regras de dinheiro e de acesso | *(próximo commit)* | [10](#etapa-10) |
+| 18/11/2026 | Filament 5.11.4 instalado, painel em `/admin` com cores e logo da MGLASTO; `filament:upgrade` no `post-autoload-dump` do Composer | Painel administrativo pronto sem escrever telas do zero | `996c0e6` | [10](#etapa-10) |
+| 18/11/2026 | Acesso ao painel só para e-mails de `ADMIN_EMAILS` (`config/mglasto.php`, `User::canAccessPanel`) | Qualquer um pode se cadastrar no site, mas só a equipe entra no painel | `996c0e6` | [10](#etapa-10) |
+| 18/11/2026 | Classe `App\Support\Money` e campo `MoneyInput`: preço digitado em reais, gravado em centavos | Um erro nessa conversão multiplicaria ou dividiria todos os preços por 100 | `996c0e6` | [10](#etapa-10) |
+| 18/11/2026 | Telas de categorias, produtos (com variações e fotos) e pedidos (só o status é editável) | Cadastro do catálogo e acompanhamento de pedidos | `996c0e6` | [10](#etapa-10) |
+| 18/11/2026 | Validação nova: preço promocional menor que o normal | Evita promoção mais cara que o preço cheio (decisão a revisar) | `996c0e6` | [10](#etapa-10) |
+| 18/11/2026 | 32 testes novos (conversão de dinheiro, acesso ao painel, formulários de produto e pedido) | Proteger as regras de dinheiro e de acesso | `996c0e6` | [10](#etapa-10) |
+| 18/11/2026 | Tokens da marca no `@theme` do Tailwind (cores, raios, sombras, alvo de toque de 44 px) e fonte Inter | Visual inteiro ajustável num lugar só, até chegarem as telas de referência | *(próximo commit)* | [11](#etapa-11) |
+| 18/11/2026 | Token `brand-ink` (`#C25400`) para texto laranja | Laranja `#FF7A00` sobre branco tem contraste 2,6:1, abaixo do mínimo de 4,5:1 | *(próximo commit)* | [11](#etapa-11) |
+| 18/11/2026 | Componentes `Button`, `ButtonLink`, `Badge`, `Price`, `ProductCard`, `Container` em `components/store/` | Peças reutilizáveis da loja, separadas das do starter kit | *(próximo commit)* | [11](#etapa-11) |
+| 18/11/2026 | `StoreLayout` (cabeçalho com busca e carrinho, menu de categorias, menu hambúrguer, rodapé grafite) e dados compartilhados `store` | Layout único para todas as páginas da loja | *(próximo commit)* | [11](#etapa-11) |
+| 18/11/2026 | Dados da empresa em `config/mglasto.php` lidos do `.env`; vazios aparecem como `[A DEFINIR]` | Não inventar telefone, CNPJ ou endereço | *(próximo commit)* | [11](#etapa-11) |
+| 18/11/2026 | Página `/guia-visual` (fora de produção) | Revisar e ajustar o visual num lugar só | *(próximo commit)* | [11](#etapa-11) |
+| 18/11/2026 | Correção: botões e textos longos estouravam a tela do celular | `whitespace-nowrap` e palavras sem quebra; conferido com 375 px reais | *(próximo commit)* | [11](#etapa-11) |
+| 18/11/2026 | `public/**` ignorado pelo formatador (`vite.config.ts`) | Os arquivos do Filament em `public/` são de terceiros | *(próximo commit)* | [11](#etapa-11) |
+| 18/11/2026 | Problema: `npm run check:fix` reformatou os `.md` de `docs/` (tabelas alinhadas, `*itálico*` virou `_itálico_`); arquivos restaurados com `git checkout -- docs/` e `docs/**` ignorado pelo formatador | O formatador do projeto também formata Markdown; documentos escritos à mão não devem ser reescritos por ferramenta | *(próximo commit)* | [11](#etapa-11) |
 
 ---
 
