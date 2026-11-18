@@ -1399,9 +1399,9 @@ Registro de **tudo** o que muda no projeto, na ordem em que aconteceu. Cada linh
 | 18/11/2026 | Fluxo completo validado em navegador real (Chrome via DevTools Protocol) numa cópia do banco, em 375 e 1280 px | Critério de "pronto" da demo, sem sujar o banco local | – | [14](#etapa-14) |
 | 18/11/2026 | Páginas Atendimento, Perguntas frequentes e Trocas e devoluções; políticas da empresa marcadas `[A DEFINIR]` e destacadas | Tarefa 10; não inventar políticas | `a54b603` | [15](#etapa-15) |
 | 18/11/2026 | Links institucionais do menu e do rodapé gerados pelas rotas; teste que visita todos os links do layout | Nenhum link do site pode apontar para `#` (defeito do site antigo) | `a54b603` | [15](#etapa-15) |
-| 18/11/2026 | PHPStan zerado no projeto inteiro: tipos no importador (`Arr::wrap`, `parse_url ?: ''`) e no `CategoryFactory` | Dois eram bugs esperando acontecer; regras do importador intactas (reimportação conferida: 8/25/5) | *(próximo commit)* | [16](#etapa-16) |
-| 18/11/2026 | Fotos do painel com URL do endereço acessado; `BrazilianFormat` para telefone, CPF/CNPJ e CEP no painel e na mensagem do WhatsApp | Fotos quebravam fora de `localhost:8000`; números crus difíceis de ler | *(próximo commit)* | [16](#etapa-16) |
-| 18/11/2026 | `docs/RELATORIO-EXECUCAO.md` | Relatório das tarefas 5 a 11 para o André revisar antes de juntar no `main` | *(próximo commit)* | [16](#etapa-16) |
+| 18/11/2026 | PHPStan zerado no projeto inteiro: tipos no importador (`Arr::wrap`, `parse_url ?: ''`) e no `CategoryFactory` | Dois eram bugs esperando acontecer; regras do importador intactas (reimportação conferida: 8/25/5) | `e1a27ac` | [16](#etapa-16) |
+| 18/11/2026 | Fotos do painel com URL do endereço acessado; `BrazilianFormat` para telefone, CPF/CNPJ e CEP no painel e na mensagem do WhatsApp | Fotos quebravam fora de `localhost:8000`; números crus difíceis de ler | `e1a27ac` | [16](#etapa-16) |
+| 18/11/2026 | `docs/RELATORIO-EXECUCAO.md` | Relatório das tarefas 5 a 11 para o André revisar antes de juntar no `main` | `e1a27ac` | [16](#etapa-16) |
 
 ---
 

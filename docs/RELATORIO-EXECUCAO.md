@@ -20,7 +20,7 @@ Execução feita em 18/11/2026, seguindo `docs/PROMPT-EXECUCAO-AUTONOMA.md`. Tod
 | 8 – Página de produto | `8ef8cfa` | `/produto/{slug}`: galeria, preço com promoção, disponibilidade, seletor de variações, quantidade, WhatsApp, descrição sanitizada, relacionados, metatags Open Graph no HTML do servidor |
 | 9 – Carrinho e orçamento | `37e0dc6` | Carrinho na sessão com preço sempre do banco; checkout com máscaras, CPF/CNPJ validado, CEP pelo ViaCEP com alternativa manual; pedido `MGL-000123` (`quote`/`site`) numa transação; link do WhatsApp com o resumo |
 | 10 – Institucionais | `a54b603` | Atendimento, Perguntas frequentes, Trocas e devoluções; políticas como `[A DEFINIR]`; teste que visita todos os links do layout |
-| 11 – Revisão final | *(commit deste relatório)* | PHPStan zerado; fotos do painel independentes do `APP_URL`; telefone, CPF e CEP formatados no painel; este relatório |
+| 11 – Revisão final | `e1a27ac` | PHPStan zerado; fotos do painel independentes do `APP_URL`; telefone, CPF e CEP formatados no painel; este relatório |
 
 Cada etapa está explicada no `docs/GUIA-DE-ESTUDO.md` (etapas 10 a 16), e cada mudança tem uma linha no **Diário do projeto**.
 
