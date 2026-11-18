@@ -38,9 +38,15 @@ class ImportWooCommerceCatalog
             ->retry(3, 500);
 
         $categoryIds = $this->importCategories($client);
+        $membership = $this->fetchCategoryMembership($client, array_keys($categoryIds));
 
-        foreach ($this->fetchAllProducts($client) as $data) {
-            DB::transaction(fn () => $this->importProduct($client, $data, $categoryIds, $withImages));
+        foreach ($this->fetchProducts($client) as $data) {
+            $wooCategoryIds = array_unique([
+                ...array_column($data['categories'], 'id'),
+                ...($membership[$data['id']] ?? []),
+            ]);
+
+            DB::transaction(fn () => $this->importProduct($client, $data, $wooCategoryIds, $categoryIds, $withImages));
         }
 
         return $this->stats;
@@ -79,15 +85,16 @@ class ImportWooCommerceCatalog
     }
 
     /**
+     * @param  array<string, mixed>  $filters
      * @return array<int, array<string, mixed>>
      */
-    private function fetchAllProducts(PendingRequest $client): array
+    private function fetchProducts(PendingRequest $client, array $filters = []): array
     {
         $products = [];
         $page = 1;
 
         do {
-            $batch = $client->get('products', ['per_page' => 100, 'page' => $page++])->throw()->json();
+            $batch = $client->get('products', [...$filters, 'per_page' => 100, 'page' => $page++])->throw()->json();
             $products = [...$products, ...$batch];
         } while (count($batch) === 100);
 
@@ -95,12 +102,33 @@ class ImportWooCommerceCatalog
     }
 
     /**
-     * @param  array<string, mixed>  $data
-     * @param  array<int, int>  $categoryIds
+     * The Store API leaves some categories (e.g. "Oferta") out of each product's
+     * own category list, so ask every category which products it holds.
+     *
+     * @param  array<int, int>  $wooCategoryIds
+     * @return array<int, array<int, int>> WooCommerce product id => WooCommerce category ids
      */
-    private function importProduct(PendingRequest $client, array $data, array $categoryIds, bool $withImages): void
+    private function fetchCategoryMembership(PendingRequest $client, array $wooCategoryIds): array
     {
-        $remoteCategories = collect($data['categories']);
+        $membership = [];
+
+        foreach ($wooCategoryIds as $wooCategoryId) {
+            foreach ($this->fetchProducts($client, ['category' => $wooCategoryId]) as $product) {
+                $membership[$product['id']][] = $wooCategoryId;
+            }
+        }
+
+        return $membership;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, int>  $wooCategoryIds
+     * @param  array<int, int>  $categoryIds  WooCommerce category id => local category id
+     */
+    private function importProduct(PendingRequest $client, array $data, array $wooCategoryIds, array $categoryIds, bool $withImages): void
+    {
+        $localCategoryIds = collect($wooCategoryIds)->map(fn (int $id) => $categoryIds[$id] ?? null)->filter()->values()->all();
         [$manageStock, $stock] = $this->parseStock($data);
 
         $product = Product::withTrashed()->updateOrCreate(
@@ -116,13 +144,11 @@ class ImportWooCommerceCatalog
                 'manage_stock' => $manageStock,
                 'stock_quantity' => $stock,
                 'is_active' => true,
-                'is_featured' => $remoteCategories->contains('slug', self::FEATURED_CATEGORY_SLUG),
+                'is_featured' => Category::whereKey($localCategoryIds)->where('slug', self::FEATURED_CATEGORY_SLUG)->exists(),
             ],
         );
 
-        $product->categories()->sync(
-            $remoteCategories->map(fn (array $c) => $categoryIds[$c['id']] ?? null)->filter()->all()
-        );
+        $product->categories()->sync($localCategoryIds);
 
         $this->stats['products']++;
 
@@ -153,6 +179,11 @@ class ImportWooCommerceCatalog
 
             [, $stock] = $this->parseStock($remote);
             $price = (int) $remote['prices']['price'];
+
+            // Variations that only repeat the parent's stock share it instead of owning a copy.
+            if ($product->manage_stock && $stock === $product->stock_quantity && $remote['is_in_stock']) {
+                $stock = null;
+            }
 
             ProductVariant::updateOrCreate(
                 ['woo_id' => $remote['id']],
