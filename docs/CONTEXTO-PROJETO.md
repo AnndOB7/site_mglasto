@@ -57,7 +57,7 @@ Repositório: https://github.com/AnndOB7/site_mglasto · pasta local: `C:\dev\si
 | 1 | Ambiente + repositório | 19/11 | ✅ |
 | 2 | Projeto Laravel + Inertia + React + Tailwind | 20/11 | ✅ |
 | 3 | Banco: catálogo e pedidos multicanal | 21/11 | ✅ |
-| 4 | Importar catálogo do WooCommerce | 22/11 | 🔄 ajustes finais |
+| 4 | Importar catálogo do WooCommerce | 22/11 | ✅ |
 | 5 | Painel admin com Filament | 23–24/11 | ⏳ |
 | 6 | Guia visual + layout base | 25/11 | ⏳ |
 | 7 | Home e categoria com busca | 26–27/11 | ⏳ |
@@ -72,4 +72,9 @@ Repositório: https://github.com/AnndOB7/site_mglasto · pasta local: `C:\dev\si
 - Rodar os testes antes de cada commit.
 - Não alterar migrations já commitadas: criar uma migration nova.
 - Explicar ao André, em português e de forma didática, o que foi feito e por quê. Ele está aprendendo Laravel e React.
-- **Ao concluir cada tarefa, acrescentar uma seção em `docs/GUIA-DE-ESTUDO.md`** no mesmo formato das existentes: o que foi feito, passo a passo com comandos, decisões e o porquê, problemas encontrados e um "Para fixar" com exercícios. Atualizar também o sumário e o checklist quando couber.
+- **Documentar tudo em `docs/GUIA-DE-ESTUDO.md`. Nenhuma mudança fica sem registro.**
+  - **Toda mudança** (código, configuração, dependência instalada, correção, decisão) ganha uma linha no **Diário do projeto**, no fim do guia: data, o que foi feito, por quê, hash do commit e link para a etapa que explica o assunto.
+  - **Todo assunto novo** (ex.: Filament, Tailwind, páginas React, checkout) ganha uma **etapa nova** no mesmo formato das existentes: o que foi feito, passo a passo com comandos, decisões e o porquê, problemas encontrados e um "Para fixar" com exercícios. Atualize também o sumário, o checklist e o glossário quando couber.
+  - **Problemas e erros também entram**, com a causa e a solução. São a parte mais útil para estudar.
+  - A documentação vai **no mesmo commit** da mudança. Depois do commit, preencha o hash no diário (pode ir no commit seguinte).
+- Ao concluir uma tarefa do cronograma, marque-a como ✅ na tabela deste arquivo.

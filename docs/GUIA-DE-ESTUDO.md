@@ -18,8 +18,10 @@ Este guia registra **cada etapa do projeto**: o que foi feito, por que foi feito
 7. [Factories e testes automatizados](#etapa-7)
 8. [Importando dados de outro sistema (comando Artisan + API)](#etapa-8)
 9. [Trabalhando com um agente de IA no projeto](#etapa-9)
+9.1. [Identidade visual: logo e cores](#etapa-9-1)
 10. [Checklist para reaproveitar em outros projetos](#checklist)
 11. [Glossário](#glossario)
+12. [Diário do projeto](#diario)
 
 ---
 
@@ -99,6 +101,16 @@ A primeira proposta era "refazer em PHP". A análise mostrou que **o site já er
 
 - **Não crie projetos dentro do OneDrive, Google Drive ou Dropbox.** As pastas `vendor` e `node_modules` têm dezenas de milhares de arquivos, e a sincronização deixa tudo lento e trava arquivos. Use algo como `C:\dev\nome-do-projeto`. O backup do código é o GitHub.
 - **Cuidado com dois PHPs instalados.** No nosso caso, o PHP de `C:\PHP` (de um projeto antigo) estava à frente do PATH. Rode `where.exe php` para ver qual está sendo usado.
+- **Erro `cURL error 60: unable to get local issuer certificate`.** O PHP do Windows não vem com a lista de autoridades certificadoras, então qualquer acesso a um site `https://` falha. Foi o que aconteceu na primeira importação do WooCommerce. A solução **correta** é dar ao PHP essa lista:
+  1. Baixe o pacote oficial: `curl -o C:\PHP\extras\ssl\cacert.pem https://curl.se/ca/cacert.pem`
+  2. No `php.ini` (descubra qual com `php --ini`), preencha as duas linhas:
+     ```ini
+     curl.cainfo = "C:/PHP/extras/ssl/cacert.pem"
+     openssl.cafile = "C:/PHP/extras/ssl/cacert.pem"
+     ```
+  3. Confira: `php -r "echo ini_get('curl.cainfo');"`
+
+  **Nunca "resolva" desligando a verificação SSL no código** (`withoutVerifying()`, `verify => false`). Isso funciona, mas deixa qualquer um no meio do caminho trocar as respostas da API. Guardamos um backup do original em `C:\PHP\php.ini.bak`.
 
 ### Para fixar
 - Rode `where.exe php` e `where.exe node` e descubra de onde vem cada um.
@@ -559,6 +571,70 @@ Final: commit "<mensagem>" e push
 
 ---
 
+<a id="etapa-9-1"></a>
+## Etapa 9.1 – Identidade visual: logo e cores
+
+**Arquivos:** `public/images/logo/*.svg`, `public/favicon.svg`, `public/favicon.ico`, `public/apple-touch-icon.png`
+
+### O problema do logo antigo
+
+O logo do site atual (`mglasto_logo_3d_3.png`) tinha três defeitos que o impediam de funcionar em fundos diferentes:
+
+1. **"M" e "LASTO" em preto:** somem em fundo escuro.
+2. **Fundo cinza embutido na imagem:** o PNG não é transparente, então sempre aparece um retângulo atrás.
+3. **Efeito 3D (relevo e sombra):** vira borrão em tamanho pequeno (ícone da aba, cabeçalho no celular).
+
+### O que fizemos
+
+**1. Redesenho em vetor (SVG).** O logo foi redesenhado com formas geométricas, mantendo o desenho original: o "M" com o "V" central, o triângulo laranja e o "G". O "LASTO" foi convertido de fonte para contorno, então aparece igual em qualquer computador, mesmo sem a fonte instalada.
+
+**Por que SVG e não PNG?**
+- Fica nítido em qualquer tamanho, do ícone de 16 px a um banner.
+- O arquivo é pequeno e o fundo é transparente.
+- As cores podem ser trocadas no próprio código.
+
+**2. Estilo plano (flat).** Sem relevo nem sombra. É o padrão atual de marcas digitais, porque funciona em tela pequena e em qualquer fundo.
+
+**3. Uma versão para cada tipo de fundo:**
+
+| Arquivo | Quando usar |
+|---|---|
+| `logo-mglasto.svg` | Fundos claros (branco, cinza-claro). Versão principal. |
+| `logo-mglasto-fundo-escuro.svg` | Fundos escuros e fotos escuras: "M" e "LASTO" em branco. |
+| `logo-mglasto-fundo-laranja.svg` | Faixas e banners laranja: triângulo e "G" em branco. |
+| `logo-mglasto-mono-preto.svg` / `-mono-branco.svg` | Uma cor só: carimbo, nota fiscal, gravação, etiqueta. |
+| `simbolo-mglasto.svg` | Só o "MG" num quadrado escuro: favicon, ícone de app, foto de perfil. |
+| `simbolo-mglasto-claro.svg` | Só o "MG" sem fundo, para fundos claros. |
+
+**4. Ícones do navegador.** O `favicon.ico` (16, 32 e 48 px), o `favicon.svg` e o `apple-touch-icon.png` (180 px, usado quando alguém salva o site na tela do iPhone) foram gerados a partir do símbolo. O `resources/views/app.blade.php` já apontava para esses arquivos, então só trocamos as imagens.
+
+### Paleta de cores
+
+Extraída do site atual (variáveis do Elementor) e organizada:
+
+| Papel | Cor | Uso |
+|---|---|---|
+| Laranja principal | `#FF7A00` | Botões, destaques, preços em promoção |
+| Laranja escuro | `#FF6000` | Botão ao passar o mouse (hover) |
+| Laranja claro | `#FFF3E8` | Fundos de seções e selos |
+| Grafite | `#1C1D1C` | Textos principais, cabeçalho, rodapé |
+| Cinza texto | `#54595F` | Textos secundários |
+| Cinza borda | `#E9E9E9` | Linhas e bordas |
+| Cinza fundo | `#F5F5F5` | Fundo de cards e seções |
+
+**Atenção à acessibilidade:** texto branco sobre o laranja `#FF7A00` tem contraste baixo (cerca de 2,6:1, quando o mínimo recomendado para texto é 4,5:1). Em botões laranja, use **texto grafite `#1C1D1C`**, ou texto branco em **negrito e tamanho grande**. Isso será definido no guia visual.
+
+### Como testamos
+
+1. Renderizamos o logo nos fundos branco, grafite e laranja e conferimos que nenhuma parte some.
+2. Renderizamos o símbolo em 16, 32 e 64 px, os tamanhos reais do favicon, e conferimos que o "MG" continua legível.
+
+### Para fixar
+- Abra um dos `.svg` no VS Code e troque a cor `#FF7A00` por outra. Abra no navegador e veja o resultado.
+- Por que um logo precisa de uma versão monocromática?
+
+---
+
 <a id="checklist"></a>
 ## Checklist para reaproveitar em outros projetos
 
@@ -608,17 +684,50 @@ Final: commit "<mensagem>" e push
 | **Eloquent** | O sistema de models do Laravel |
 | **Enum** | Tipo com um conjunto fixo de valores |
 | **Factory** | Gerador de dados falsos para testes |
+| **Favicon** | Ícone do site na aba do navegador |
+| **Flat (design plano)** | Estilo sem relevo, sombras ou brilho |
 | **Idempotente** | Pode rodar várias vezes com o mesmo resultado, sem duplicar |
 | **Inertia** | Liga o Laravel ao React sem precisar de uma API separada |
 | **Migration** | Arquivo que cria ou altera tabelas do banco |
 | **Model** | Classe que representa uma tabela |
 | **Scope** | Filtro reutilizável de consulta (`Product::active()`) |
 | **Seeder** | Script que preenche o banco com dados iniciais |
+| **SVG** | Formato de imagem vetorial: nítido em qualquer tamanho, descrito em código |
 | **SKU** | Código interno do produto |
 | **Slug** | Versão do nome usada em URLs (`piso-borracha-diamante`) |
 | **Soft delete** | "Apagar" marcando a data, sem remover de verdade |
 | **Transação** | Grupo de operações no banco que acontece por inteiro ou não acontece |
 | **Vite** | Ferramenta que compila o React e o Tailwind |
+
+---
+
+---
+
+<a id="diario"></a>
+## Diário do projeto
+
+Registro de **tudo** o que muda no projeto, na ordem em que aconteceu. Cada linha diz o que foi feito, por quê e em qual commit, e aponta para a etapa do guia que explica o assunto.
+
+| Data | O que foi feito | Por quê | Commit | Etapa |
+|---|---|---|---|---|
+| 18/11/2026 | Análise do site atual: WordPress + WooCommerce + Elementor, 25 produtos, 8 categorias, venda por orçamento no WhatsApp | Decidir o escopo antes de programar | – | [0](#etapa-0) |
+| 18/11/2026 | Decisão: refazer em Laravel como demo de 2 semanas, para apresentar como proposta | Liberdade de código e base para o futuro sistema de pedidos multicanal | – | [0](#etapa-0) |
+| 18/11/2026 | Ambiente conferido: PHP 8.3.31, Composer 2.9.8, Node 22.19, Git 2.56 | Pré-requisitos do Laravel 13 | – | [1](#etapa-1) |
+| 18/11/2026 | Pasta do projeto movida do OneDrive para `C:\dev\site_mglasto` | A sincronização trava `vendor` e `node_modules` | – | [1](#etapa-1) |
+| 18/11/2026 | Projeto criado com `laravel new`: React, Fortify, Pest, SQLite, Laravel Boost | Stack definida para a demo | `b943af1` | [3](#etapa-3) |
+| 18/11/2026 | `.env.example` com nome MGLasto e idioma `pt_BR` | Mensagens e dados de teste em português | `b943af1` | [3](#etapa-3) |
+| 18/11/2026 | Repositório publicado em github.com/AnndOB7/site_mglasto | Versionamento e backup | `b943af1` | [2](#etapa-2) |
+| 18/11/2026 | Migrations de catálogo (categorias, produtos, variações, fotos) e de pedidos multicanal | Base de dados da loja e do futuro sistema de pedidos | `93ae51d` | [5](#etapa-5) |
+| 18/11/2026 | Models, enums `OrderChannel` e `OrderStatus`, factories e 7 testes | Regras de negócio num lugar só e verificadas | `93ae51d` | [6](#etapa-6), [7](#etapa-7) |
+| 18/11/2026 | Coluna `attributes` da variação renomeada para `options` antes do commit | `attributes` é nome reservado nos models do Laravel | `93ae51d` | [5](#etapa-5) |
+| 18/11/2026 | Comando `mglasto:importar-woocommerce` e 5 testes | Trazer o catálogo real sem digitar nada | `50cdd4d` | [8](#etapa-8) |
+| 18/11/2026 | PHP configurado com o pacote de certificados CA (`cacert.pem`) no `C:\PHP\php.ini` | A primeira importação falhou com `cURL error 60`: o PHP não conseguia validar o HTTPS da loja | – (fora do repositório) | [1](#etapa-1) |
+| 18/11/2026 | Primeira importação: 8 categorias, 25 produtos, 5 variações, 33 fotos | Popular o banco da demo | – | [8](#etapa-8) |
+| 18/11/2026 | Correção: categoria "Oferta" buscada direto na categoria; variações sem cópia do estoque do pai | A conferência no banco mostrou 0 destaques, 2 produtos sem categoria e estoque somando 460 | `7521c05` | [8](#etapa-8) |
+| 18/11/2026 | Reimportação conferida: 4 destaques, nenhum produto sem categoria, variações com estoque compartilhado | Validar a correção com os dados reais | – | [8](#etapa-8) |
+| 18/11/2026 | Criados `docs/CONTEXTO-PROJETO.md` e este guia | Passar o contexto ao agente do VS Code e registrar o aprendizado | `a68fd0a` | [9](#etapa-9) |
+| 18/11/2026 | Logo redesenhado em SVG plano, com 5 versões para fundos diferentes, mais o símbolo; favicon e ícone da Apple trocados | O logo antigo sumia em fundo escuro, tinha fundo cinza embutido e o 3D borrava em tamanho pequeno | *(próximo commit)* | [9.1](#etapa-9-1) |
+| 18/11/2026 | Paleta de cores definida a partir do site atual | Base do guia visual (tarefa 6) | *(próximo commit)* | [9.1](#etapa-9-1) |
 
 ---
 
