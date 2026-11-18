@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Concerns\HasTeams;
 use Database\Factories\UserFactory;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -33,10 +35,18 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable(['name', 'email', 'password', 'current_team_id'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, HasTeams, Notifiable;
+
+    /**
+     * Only e-mails listed in ADMIN_EMAILS can open the /admin panel.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return in_array(strtolower($this->email), config('mglasto.admin_emails'), true);
+    }
 
     /**
      * Get the attributes that should be cast.

@@ -19,9 +19,10 @@ Este guia registra **cada etapa do projeto**: o que foi feito, por que foi feito
 8. [Importando dados de outro sistema (comando Artisan + API)](#etapa-8)
 9. [Trabalhando com um agente de IA no projeto](#etapa-9)
 9.1. [Identidade visual: logo e cores](#etapa-9-1)
-10. [Checklist para reaproveitar em outros projetos](#checklist)
-11. [Glossário](#glossario)
-12. [Diário do projeto](#diario)
+10. [Painel administrativo com Filament](#etapa-10)
+11. [Checklist para reaproveitar em outros projetos](#checklist)
+12. [Glossário](#glossario)
+13. [Diário do projeto](#diario)
 
 ---
 
@@ -635,6 +636,130 @@ Extraída do site atual (variáveis do Elementor) e organizada:
 
 ---
 
+<a id="etapa-10"></a>
+## Etapa 10 – Painel administrativo com Filament
+
+**Arquivos:** `app/Providers/Filament/AdminPanelProvider.php`, `app/Filament/Resources/**`, `app/Filament/Forms/MoneyInput.php`, `app/Support/Money.php`, `config/mglasto.php`, `app/Models/User.php`, `tests/Unit/MoneyTest.php`, `tests/Feature/Admin/AdminPanelTest.php`
+
+**O que fizemos:** criamos o painel em `/admin`, onde a MGLASTO cadastra categorias, produtos, variações e fotos e acompanha os pedidos, sem escrever nenhuma tela do zero.
+
+### O que é o Filament
+
+É um pacote que **gera telas de administração a partir dos seus models**: listas com busca, filtros e paginação, formulários com validação, upload de fotos. Você descreve *quais campos* existem, e ele monta a tela. Escrever isso em React levaria semanas.
+
+O painel do Filament é **separado da loja**: ele usa Livewire (telas em PHP que se atualizam sozinhas), não Inertia/React. São dois "mundos" no mesmo projeto, e tudo bem: o cliente nunca vê o painel.
+
+### Passo a passo
+
+1. **Ativar a extensão `intl` do PHP.** O Filament usa essa extensão para formatar números e datas. O primeiro `composer require` falhou com `ext-intl * -> it is missing from your system`. No `C:\PHP\php.ini`, tiramos o `;` da frente de `extension=intl` (e de `extension=gd`, usada para imagens):
+   ```powershell
+   php -m | Select-String intl     # deve mostrar "intl"
+   ```
+   Não use `--ignore-platform-req=ext-intl`: o Composer instala, mas o painel quebra na hora de usar.
+
+2. **Instalar o Filament e criar o painel:**
+   ```powershell
+   composer require filament/filament:"^5.11" -W
+   php artisan make:filament-panel admin
+   php artisan filament:assets
+   ```
+   Usamos a versão 5.11.4, a mais recente compatível com Laravel 13 (conferida com `composer show filament/filament --all`).
+
+3. **Gerar as telas (resources) a partir do banco:**
+   ```powershell
+   php artisan make:filament-resource Category --generate
+   php artisan make:filament-resource Product --generate --soft-deletes
+   php artisan make:filament-resource Order --generate
+   php artisan make:filament-relation-manager ProductResource variants name
+   php artisan make:filament-relation-manager ProductResource images path
+   php artisan make:filament-relation-manager OrderResource items product_name
+   ```
+   O `--generate` lê as colunas da tabela e cria um formulário inicial. Depois **ajustamos tudo à mão**: rótulos em português, campos na ordem certa, regras de validação.
+
+### Como um resource é organizado
+
+```
+app/Filament/Resources/Products/
+├── ProductResource.php          ← "índice": model, ícone, rótulos, páginas
+├── Schemas/ProductForm.php      ← campos do formulário
+├── Tables/ProductsTable.php     ← colunas e filtros da lista
+├── Pages/                       ← Listar, Criar, Editar
+└── RelationManagers/            ← abas de Variações e Fotos dentro do produto
+```
+Um **relation manager** é uma tabela dentro da página de edição que gerencia um relacionamento (`hasMany`). Por isso as variações e fotos são editadas *dentro* do produto.
+
+### Decisões importantes (e o porquê)
+
+**1. Quem pode entrar: lista de e-mails no `.env`.**
+```php
+// app/Models/User.php
+public function canAccessPanel(Panel $panel): bool
+{
+    return in_array(strtolower($this->email), config('mglasto.admin_emails'), true);
+}
+```
+```
+# .env
+ADMIN_EMAILS=voce@mglasto.com.br,outra.pessoa@mglasto.com.br
+```
+Qualquer pessoa pode criar conta no site (o starter kit tem cadastro), mas só os e-mails da lista entram no painel. Os outros recebem **403 (proibido)**. A lista é lida em `config/mglasto.php`, porque `env()` só pode ser usado dentro de `config/` (regra da Etapa 8). Comparamos em minúsculas, porque `Admin@MGLasto.com.br` e `admin@mglasto.com.br` são o mesmo e-mail.
+
+**2. Dinheiro: digita em reais, grava em centavos.** É o ponto mais perigoso do painel: um erro aqui multiplica ou divide todos os preços por 100. Por isso a conversão fica **num lugar só**, a classe `App\Support\Money`:
+
+| Método | Entrada | Saída |
+|---|---|---|
+| `Money::toCents()` | `"1.234,56"` | `123456` |
+| `Money::fromCents()` | `8860` | `"88,60"` |
+| `Money::format()` | `8860` | `"R$ 88,60"` |
+
+Valores que não dá para entender com certeza (`"88,605"`, `"abc"`) viram `null` e o formulário mostra *"Informe o valor em reais, por exemplo 88,60"*. **Nunca adivinhe um preço.**
+
+O campo reutilizável `MoneyInput` liga a conversão ao formulário:
+```php
+TextInput::make($name)
+    ->prefix('R$')
+    ->formatStateUsing(fn (?int $state) => Money::fromCents($state))   // banco → tela
+    ->dehydrateStateUsing(fn (?string $state) => Money::toCents($state)) // tela → banco
+```
+`formatStateUsing` roda ao **abrir** o formulário e `dehydrateStateUsing` ao **salvar**. Na tabela usamos `->money('BRL', divideBy: 100, locale: 'pt_BR')`, que divide por 100 só para exibir.
+
+**3. Pedido é histórico: só o status muda.** Na tela do pedido, os dados do cliente, os valores e os itens aparecem como **texto** (`TextEntry`), não como campo editável. O único campo é o `Select` de status. Também desligamos criar e apagar pedidos (`canCreate()` e `canDelete()` retornam `false`): pedidos nascem no checkout ou na importação dos marketplaces, e um pedido errado é **cancelado**, não apagado.
+
+**4. Variação sem preço ou sem estoque herda do produto.** No formulário da variação, deixar o preço vazio significa *"usa o preço do produto"* e deixar o estoque vazio significa *"compartilha o estoque do produto"* (regras 2 e 3 do contexto). Os textos de ajuda dizem isso na tela.
+
+**5. Preço promocional precisa ser menor que o normal.** Validação nova, para evitar uma "promoção" mais cara que o preço normal. *(Decisão tomada sem o André: está no relatório para revisão.)*
+
+**6. Descrição com editor limitado.** O editor de texto só oferece negrito, itálico, títulos H2/H3 e listas, as mesmas tags que a loja aceita (regra 8). A loja ainda vai sanitizar o HTML ao exibir.
+
+**7. Endereços e textos em português.** `/admin/produtos`, `/admin/categorias`, `/admin/pedidos`, via `$slug` em cada resource. Cor principal laranja `#FF7A00`, logo da MGLASTO (versão clara e versão para modo escuro).
+
+### Problemas encontrados
+
+| Problema | Causa | Solução |
+|---|---|---|
+| `ext-intl ... is missing from your system` | Extensão `intl` desligada no `php.ini` | Tirar o `;` de `extension=intl` |
+| `composer require` passou de 10 minutos e o `filament:install` ficou parado | O instalador fazia uma pergunta e esperava resposta | Rodar os comandos separados com argumentos explícitos (`make:filament-panel admin`) |
+| Comandos `filament:*` não existiam depois da instalação | O Composer foi interrompido antes do *package discovery* | `composer install` de novo |
+| O `sed` estragou as quebras de linha do `php.ini` | O `sed` do Git Bash troca CRLF por LF | Normalizar o arquivo e conferir com `diff --strip-trailing-cr` |
+
+### Como criar o primeiro administrador
+
+```powershell
+# 1) no .env
+ADMIN_EMAILS=seu-email@exemplo.com
+# 2) criar o usuário (pede nome, e-mail e senha)
+php artisan make:filament-user
+# 3) abrir http://localhost:8000/admin
+```
+
+### Para fixar
+- No `tinker`, rode `App\Support\Money::toCents('1.234,56')` e `App\Support\Money::fromCents(99)`. Explique cada resultado.
+- Por que é melhor `canDelete()` retornar `false` do que só esconder o botão de apagar?
+- Abra `ProductsTable.php` e adicione uma coluna com a data de criação, escondida por padrão (`->toggleable(isToggledHiddenByDefault: true)`).
+- Rode `php artisan test --filter=AdminPanelTest` e leia cada teste: qual regra de negócio cada um protege?
+
+---
+
 <a id="checklist"></a>
 ## Checklist para reaproveitar em outros projetos
 
@@ -666,6 +791,8 @@ Extraída do site atual (variáveis do Elementor) e organizada:
 - [ ] Valores fixos em enums
 - [ ] `env()` só dentro de `config/`
 - [ ] Dados de fora sempre validados e limpos
+- [ ] Conversão de dinheiro (tela ↔ banco) numa classe só, com testes
+- [ ] Painel administrativo com acesso restrito e testado (403 para quem não pode)
 
 **Qualidade**
 - [ ] Testes para cada regra de negócio
@@ -679,23 +806,28 @@ Extraída do site atual (variáveis do Elementor) e organizada:
 
 | Termo | Significado |
 |---|---|
+| **403** | Código HTTP de "proibido": a pessoa está logada, mas não tem permissão |
 | **Artisan** | Ferramenta de linha de comando do Laravel (`php artisan ...`) |
 | **Composer** | Instala pacotes PHP (lista em `composer.json`) |
 | **Eloquent** | O sistema de models do Laravel |
 | **Enum** | Tipo com um conjunto fixo de valores |
 | **Factory** | Gerador de dados falsos para testes |
 | **Favicon** | Ícone do site na aba do navegador |
+| **Filament** | Pacote que gera telas de administração (listas, formulários) a partir dos models |
 | **Flat (design plano)** | Estilo sem relevo, sombras ou brilho |
 | **Idempotente** | Pode rodar várias vezes com o mesmo resultado, sem duplicar |
 | **Inertia** | Liga o Laravel ao React sem precisar de uma API separada |
+| **Livewire** | Telas em PHP que se atualizam sem recarregar a página; o Filament é feito com ele |
 | **Migration** | Arquivo que cria ou altera tabelas do banco |
 | **Model** | Classe que representa uma tabela |
+| **Relation manager** | Tabela dentro da página de edição do Filament que gerencia um relacionamento (ex.: variações do produto) |
+| **Resource (Filament)** | Conjunto de telas (listar, criar, editar) de um model no painel |
 | **Scope** | Filtro reutilizável de consulta (`Product::active()`) |
 | **Seeder** | Script que preenche o banco com dados iniciais |
-| **SVG** | Formato de imagem vetorial: nítido em qualquer tamanho, descrito em código |
 | **SKU** | Código interno do produto |
 | **Slug** | Versão do nome usada em URLs (`piso-borracha-diamante`) |
 | **Soft delete** | "Apagar" marcando a data, sem remover de verdade |
+| **SVG** | Formato de imagem vetorial: nítido em qualquer tamanho, descrito em código |
 | **Transação** | Grupo de operações no banco que acontece por inteiro ou não acontece |
 | **Vite** | Ferramenta que compila o React e o Tailwind |
 
@@ -726,8 +858,16 @@ Registro de **tudo** o que muda no projeto, na ordem em que aconteceu. Cada linh
 | 18/11/2026 | Correção: categoria "Oferta" buscada direto na categoria; variações sem cópia do estoque do pai | A conferência no banco mostrou 0 destaques, 2 produtos sem categoria e estoque somando 460 | `7521c05` | [8](#etapa-8) |
 | 18/11/2026 | Reimportação conferida: 4 destaques, nenhum produto sem categoria, variações com estoque compartilhado | Validar a correção com os dados reais | – | [8](#etapa-8) |
 | 18/11/2026 | Criados `docs/CONTEXTO-PROJETO.md` e este guia | Passar o contexto ao agente do VS Code e registrar o aprendizado | `a68fd0a` | [9](#etapa-9) |
-| 18/11/2026 | Logo redesenhado em SVG plano, com 5 versões para fundos diferentes, mais o símbolo; favicon e ícone da Apple trocados | O logo antigo sumia em fundo escuro, tinha fundo cinza embutido e o 3D borrava em tamanho pequeno | *(próximo commit)* | [9.1](#etapa-9-1) |
-| 18/11/2026 | Paleta de cores definida a partir do site atual | Base do guia visual (tarefa 6) | *(próximo commit)* | [9.1](#etapa-9-1) |
+| 18/11/2026 | Logo redesenhado em SVG plano, com 5 versões para fundos diferentes, mais o símbolo; favicon e ícone da Apple trocados | O logo antigo sumia em fundo escuro, tinha fundo cinza embutido e o 3D borrava em tamanho pequeno | `2a3ada6` | [9.1](#etapa-9-1) |
+| 18/11/2026 | Paleta de cores definida a partir do site atual | Base do guia visual (tarefa 6) | `2a3ada6` | [9.1](#etapa-9-1) |
+| 18/11/2026 | Commit da identidade visual no `main` e criação da branch `demo` para as tarefas 5 a 11 | O André vai revisar a demo antes de juntar no `main` | `2a3ada6` | [9](#etapa-9) |
+| 18/11/2026 | Extensões `intl` e `gd` ativadas no `C:\PHP\php.ini` | O Filament exige `intl`; `gd` trata imagens | – (fora do repositório) | [10](#etapa-10) |
+| 18/11/2026 | Filament 5.11.4 instalado, painel em `/admin` com cores e logo da MGLASTO; `filament:upgrade` no `post-autoload-dump` do Composer | Painel administrativo pronto sem escrever telas do zero | *(próximo commit)* | [10](#etapa-10) |
+| 18/11/2026 | Acesso ao painel só para e-mails de `ADMIN_EMAILS` (`config/mglasto.php`, `User::canAccessPanel`) | Qualquer um pode se cadastrar no site, mas só a equipe entra no painel | *(próximo commit)* | [10](#etapa-10) |
+| 18/11/2026 | Classe `App\Support\Money` e campo `MoneyInput`: preço digitado em reais, gravado em centavos | Um erro nessa conversão multiplicaria ou dividiria todos os preços por 100 | *(próximo commit)* | [10](#etapa-10) |
+| 18/11/2026 | Telas de categorias, produtos (com variações e fotos) e pedidos (só o status é editável) | Cadastro do catálogo e acompanhamento de pedidos | *(próximo commit)* | [10](#etapa-10) |
+| 18/11/2026 | Validação nova: preço promocional menor que o normal | Evita promoção mais cara que o preço cheio (decisão a revisar) | *(próximo commit)* | [10](#etapa-10) |
+| 18/11/2026 | 32 testes novos (conversão de dinheiro, acesso ao painel, formulários de produto e pedido) | Proteger as regras de dinheiro e de acesso | *(próximo commit)* | [10](#etapa-10) |
 
 ---
 
