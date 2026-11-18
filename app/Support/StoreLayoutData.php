@@ -43,11 +43,10 @@ final class StoreLayoutData
             'search_query' => (string) $request->query('q', ''),
             'cart_url' => route('cart.show', absolute: false),
             'home_url' => route('home', absolute: false),
-            'institutional' => [
-                ['label' => 'Atendimento', 'url' => '/atendimento'],
-                ['label' => 'Perguntas frequentes', 'url' => '/perguntas-frequentes'],
-                ['label' => 'Trocas e devoluções', 'url' => '/trocas-e-devolucoes'],
-            ],
+            'institutional' => array_values(array_map(
+                fn (array $page): array => ['label' => $page['title'], 'url' => route($page['route'], absolute: false)],
+                InstitutionalPages::all(),
+            )),
             'company' => [
                 'name' => self::configText('name') ?? 'MGLASTO',
                 'phone' => self::configText('phone'),

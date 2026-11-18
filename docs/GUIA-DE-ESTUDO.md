@@ -24,9 +24,10 @@ Este guia registra **cada etapa do projeto**: o que foi feito, por que foi feito
 12. [Páginas da loja: home, categoria e busca](#etapa-12)
 13. [Página de produto](#etapa-13)
 14. [Carrinho e orçamento pelo WhatsApp](#etapa-14)
-15. [Checklist para reaproveitar em outros projetos](#checklist)
-16. [Glossário](#glossario)
-17. [Diário do projeto](#diario)
+15. [Páginas institucionais](#etapa-15)
+16. [Checklist para reaproveitar em outros projetos](#checklist)
+17. [Glossário](#glossario)
+18. [Diário do projeto](#diario)
 
 ---
 
@@ -1131,6 +1132,42 @@ Além dos testes automatizados, rodamos o fluxo num **navegador real**:
 
 ---
 
+<a id="etapa-15"></a>
+## Etapa 15 – Páginas institucionais
+
+**Arquivos:** `app/Support/InstitutionalPages.php`, `app/Http/Controllers/Store/InstitutionalPageController.php`, `resources/js/pages/store/institutional.tsx`, `tests/Feature/Store/InstitutionalPagesTest.php`
+
+**O que fizemos:** as páginas **Atendimento** (`/atendimento`), **Perguntas frequentes** (`/perguntas-frequentes`) e **Trocas e devoluções** (`/trocas-e-devolucoes`), com estrutura e layout prontos.
+
+### Não inventar: a regra mais importante desta etapa
+
+Uma página de trocas com um prazo inventado ("30 dias") vira uma **promessa da empresa** para o cliente. Por isso:
+- Só escrevemos o que é **fato sobre o funcionamento do site** (como fazer o pedido, que não precisa de cadastro, que o frete é combinado no WhatsApp).
+- Tudo o que é **política da empresa** (pagamento, prazos, regiões de entrega, trocas, reembolso) aparece como **`[A DEFINIR]`**, destacado em laranja, com uma dica do que falta.
+- Os contatos (WhatsApp, telefone, e-mail, endereço) vêm do `.env`. Sem valor, aparece `[A DEFINIR]`.
+
+Um teste garante que **todas** as seções de Trocas e devoluções começam com `[A DEFINIR]`: se alguém escrever uma política sem combinar, o teste avisa.
+
+### Conteúdo num lugar só
+
+Os textos ficam em `App\Support\InstitutionalPages`, e **uma** página React (`institutional.tsx`) desenha as três. Para preencher um `[A DEFINIR]`, edite só esse arquivo PHP. Mais tarde, esse conteúdo pode ir para o painel `/admin`.
+
+O componente `WithPlaceholders` procura o texto `[A DEFINIR...]` e o envolve numa tag `<mark>` laranja:
+```tsx
+text.split(/(\[A DEFINIR[^\]]*\])/g)  // separa os trechos marcados do resto do texto
+```
+
+### Nenhum link para `#`
+
+O site antigo tinha vários links apontando para `#` (não levam a lugar nenhum). Um teste agora **visita todos os links** do cabeçalho, do menu e do rodapé e exige resposta **200** de cada um.
+
+### Para fixar
+- Preencha `COMPANY_PHONE` no `.env`, rode `php artisan config:clear` e veja o telefone aparecer em `/atendimento` e no rodapé. (Depois apague.)
+- Por que o teste de Trocas exige `[A DEFINIR]` em todas as seções? Quando ele deve ser mudado?
+- Adicione uma pergunta nova em `InstitutionalPages::all()` e veja a página atualizar.
+
+---
+
 <a id="checklist"></a>
 ## Checklist para reaproveitar em outros projetos
 
@@ -1183,6 +1220,8 @@ Além dos testes automatizados, rodamos o fluxo num **navegador real**:
 - [ ] Testes que não dependem do build do front-end (`withoutVite()`)
 - [ ] Teste de busca que falharia se o defeito existisse (não só um que passa)
 - [ ] Fluxo principal testado num navegador real, numa cópia do banco
+- [ ] Teste que visita todos os links do menu e do rodapé (nenhum `#`, nenhum 404)
+- [ ] Nenhuma política ou dado da empresa inventado: o que falta aparece como `[A DEFINIR]`
 
 ---
 
@@ -1295,13 +1334,15 @@ Registro de **tudo** o que muda no projeto, na ordem em que aconteceu. Cada linh
 | 18/11/2026 | `WHATSAPP_NUMBER` (vazio no `.env.example`) e classe `WhatsApp`; sem número, a página mostra `[A DEFINIR]` | Não inventar número de contato | `8ef8cfa` | [13](#etapa-13) |
 | 18/11/2026 | Correção: página de produto passava 8 px da tela no celular (`grid-cols-1`) | Coluna implícita da grade crescia com as miniaturas | `8ef8cfa` | [13](#etapa-13) |
 | 18/11/2026 | Trilha de navegação prefere categoria real a "Oferta"; opção de valor único já vem marcada | Usabilidade | `8ef8cfa` | [13](#etapa-13) |
-| 18/11/2026 | Carrinho na sessão (`Cart`, `CartLine`): guarda só produto, variação e quantidade; preços sempre relidos do banco | Nunca confiar no preço enviado pelo navegador | *(próximo commit)* | [14](#etapa-14) |
-| 18/11/2026 | `AddToCartRequest` e `CheckoutRequest` (máscaras removidas, mensagens em português) e regra `CpfOrCnpj` com dígitos verificadores | Validação fora do controller | *(próximo commit)* | [14](#etapa-14) |
-| 18/11/2026 | `PlaceQuoteOrder`: pedido `quote`/`site`, número `MGL-000123`, itens com cópia, tudo numa transação; carrinho limpo depois | Regras 4 e 6 do contexto | *(próximo commit)* | [14](#etapa-14) |
-| 18/11/2026 | Confirmação só abre na sessão que fez o pedido; envio limitado a 10 por minuto | Números sequenciais permitiriam ver dados de outros clientes; evitar spam de pedidos | *(próximo commit)* | [14](#etapa-14) |
-| 18/11/2026 | Busca de CEP no ViaCEP pelo navegador, com preenchimento manual se falhar | Facilitar o preenchimento sem depender do serviço | *(próximo commit)* | [14](#etapa-14) |
-| 18/11/2026 | Mensagem do WhatsApp com número do pedido, itens e total; sem número configurado, aviso `[A DEFINIR]` | Fluxo de venda atual da MGLASTO | *(próximo commit)* | [14](#etapa-14) |
+| 18/11/2026 | Carrinho na sessão (`Cart`, `CartLine`): guarda só produto, variação e quantidade; preços sempre relidos do banco | Nunca confiar no preço enviado pelo navegador | `37e0dc6` | [14](#etapa-14) |
+| 18/11/2026 | `AddToCartRequest` e `CheckoutRequest` (máscaras removidas, mensagens em português) e regra `CpfOrCnpj` com dígitos verificadores | Validação fora do controller | `37e0dc6` | [14](#etapa-14) |
+| 18/11/2026 | `PlaceQuoteOrder`: pedido `quote`/`site`, número `MGL-000123`, itens com cópia, tudo numa transação; carrinho limpo depois | Regras 4 e 6 do contexto | `37e0dc6` | [14](#etapa-14) |
+| 18/11/2026 | Confirmação só abre na sessão que fez o pedido; envio limitado a 10 por minuto | Números sequenciais permitiriam ver dados de outros clientes; evitar spam de pedidos | `37e0dc6` | [14](#etapa-14) |
+| 18/11/2026 | Busca de CEP no ViaCEP pelo navegador, com preenchimento manual se falhar | Facilitar o preenchimento sem depender do serviço | `37e0dc6` | [14](#etapa-14) |
+| 18/11/2026 | Mensagem do WhatsApp com número do pedido, itens e total; sem número configurado, aviso `[A DEFINIR]` | Fluxo de venda atual da MGLASTO | `37e0dc6` | [14](#etapa-14) |
 | 18/11/2026 | Fluxo completo validado em navegador real (Chrome via DevTools Protocol) numa cópia do banco, em 375 e 1280 px | Critério de "pronto" da demo, sem sujar o banco local | – | [14](#etapa-14) |
+| 18/11/2026 | Páginas Atendimento, Perguntas frequentes e Trocas e devoluções; políticas da empresa marcadas `[A DEFINIR]` e destacadas | Tarefa 10; não inventar políticas | *(próximo commit)* | [15](#etapa-15) |
+| 18/11/2026 | Links institucionais do menu e do rodapé gerados pelas rotas; teste que visita todos os links do layout | Nenhum link do site pode apontar para `#` (defeito do site antigo) | *(próximo commit)* | [15](#etapa-15) |
 
 ---
 

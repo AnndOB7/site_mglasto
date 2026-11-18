@@ -5,6 +5,7 @@ use App\Http\Controllers\Store\CartController;
 use App\Http\Controllers\Store\CategoryController;
 use App\Http\Controllers\Store\CheckoutController;
 use App\Http\Controllers\Store\HomeController;
+use App\Http\Controllers\Store\InstitutionalPageController;
 use App\Http\Controllers\Store\ProductController;
 use App\Http\Controllers\Store\SearchController;
 use App\Http\Controllers\Teams\TeamInvitationController;
@@ -28,6 +29,11 @@ Route::delete('/carrinho/itens/{key}', [CartController::class, 'destroy'])->name
 Route::get('/orcamento', [CheckoutController::class, 'show'])->name('checkout.show');
 Route::post('/orcamento', [CheckoutController::class, 'store'])->middleware('throttle:10,1')->name('checkout.store');
 Route::get('/orcamento/{order:number}/enviado', [CheckoutController::class, 'done'])->name('checkout.done');
+
+// Páginas institucionais (conteúdo em App\Support\InstitutionalPages).
+Route::get('/atendimento', [InstitutionalPageController::class, 'service'])->name('pages.service');
+Route::get('/perguntas-frequentes', [InstitutionalPageController::class, 'faq'])->name('pages.faq');
+Route::get('/trocas-e-devolucoes', [InstitutionalPageController::class, 'returns'])->name('pages.returns');
 
 if (! app()->isProduction()) {
     Route::inertia('/guia-visual', 'store/style-guide')->name('style-guide');
